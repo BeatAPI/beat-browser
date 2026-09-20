@@ -192,8 +192,21 @@ function writeJson(t) {
   } catch (e) {
     throw new Error(`this file is not valid JSON (${e.message}); not touching it`);
   }
-  cfg.mcpServers = cfg.mcpServers || {};
-  cfg.mcpServers['beat-browser'] = launcher(t.client);
+  // OpenCode uses top-level "mcp" with { type, command[], enabled }.
+  const isOpenCode = t.client === 'opencode' || /opencode\.json$/.test(String(t.file).replace(/\\/g, '/'));
+  if (isOpenCode) {
+    const launch = launcher(t.client);
+    cfg.mcp = cfg.mcp || {};
+    cfg.mcp['beat-browser'] = {
+      type: 'local',
+      command: [launch.command, ...launch.args],
+      enabled: true,
+    };
+    delete cfg.mcp['huashu-chrome'];
+  } else {
+    cfg.mcpServers = cfg.mcpServers || {};
+    cfg.mcpServers['beat-browser'] = launcher(t.client);
+  }
   fs.writeFileSync(t.file, JSON.stringify(cfg, null, 2) + '\n');
 }
 

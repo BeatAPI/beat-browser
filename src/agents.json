@@ -14,6 +14,15 @@
       ]
     },
     {
+      "name": "OpenCode",
+      "client": "opencode",
+      "kind": "json",
+      "paths": [
+        "~/.config/opencode/opencode.json",
+        "~/.opencode/opencode.json"
+      ]
+    },
+    {
       "name": "Codex CLI",
       "client": "codex",
       "kind": "toml",
