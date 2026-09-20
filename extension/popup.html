@@ -1,60 +1,183 @@
 <!doctype html>
 <meta charset="utf-8" />
 <style>
-  :root { color-scheme: light dark; }
-  body { width: 280px; margin: 0; padding: 16px; font: 13px/1.55 -apple-system, system-ui, sans-serif; }
-  h1 { margin: 0 0 2px; font-size: 14px; font-weight: 600; letter-spacing: .2px; }
-  .sub { color: #8a8f98; font-size: 11px; margin-bottom: 14px; }
-  .row { display: flex; align-items: center; gap: 8px; padding: 9px 11px; border-radius: 8px; background: color-mix(in srgb, currentColor 6%, transparent); }
-  .dot { width: 8px; height: 8px; border-radius: 50%; background: #94a3b8; flex: none; }
-  .dot.on { background: #22c55e; }
-  .state { font-weight: 500; }
-  button { margin-top: 12px; width: 100%; padding: 8px; font: inherit; font-weight: 500; border: 0; border-radius: 8px; background: #2563eb; color: #fff; cursor: pointer; }
-  button:disabled { opacity: .45; cursor: default; }
-  button.ghost { background: color-mix(in srgb, currentColor 10%, transparent); color: inherit; }
-  button.ghost.on { background: #16a34a; color: #fff; }
-  .tip { margin-top: 12px; font-size: 11px; color: #8a8f98; }
-  code { font-size: 10.5px; background: color-mix(in srgb, currentColor 9%, transparent); padding: 1px 4px; border-radius: 4px; }
+  :root {
+    color-scheme: dark;
+    --bg: #0b0d12;
+    --panel: #12141a;
+    --ink: #f4efe7;
+    --muted: #8a8580;
+    --line: #2a2e38;
+    --ok: #3d9a6a;
+    --track: #2a2e38;
+    --thumb: #f4efe7;
+  }
+  * { box-sizing: border-box; }
+  body {
+    width: 280px;
+    margin: 0;
+    padding: 14px;
+    font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+  }
+  .top {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .logo {
+    width: 28px; height: 28px; border-radius: 8px;
+    border: 1px solid var(--line); background: #161922; flex: none;
+    object-fit: contain; padding: 3px;
+  }
+  .name { font-weight: 600; font-size: 13.5px; }
+  .name span { color: var(--muted); font-weight: 400; font-size: 11px; margin-left: 4px; }
+  .status {
+    margin-top: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+  }
+  .status-left { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .dot {
+    width: 7px; height: 7px; border-radius: 50%; background: #5c616b; flex: none;
+  }
+  .dot.on { background: var(--ok); box-shadow: 0 0 0 3px rgba(61,154,106,.18); }
+  .label { font-size: 12.5px; font-weight: 500; }
+  .meta {
+    margin-top: 6px;
+    padding: 0 2px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .action {
+    margin-top: 10px;
+    width: 100%;
+    padding: 9px;
+    border: 0;
+    border-radius: 10px;
+    background: var(--ink);
+    color: var(--bg);
+    font: inherit;
+    font-weight: 600;
+    font-size: 12.5px;
+    cursor: pointer;
+  }
+  .action:disabled { opacity: .35; cursor: default; }
+  .action[hidden] { display: none; }
+
+  details.adv {
+    margin-top: 12px;
+    border-top: 1px solid var(--line);
+    padding-top: 10px;
+  }
+  details.adv > summary {
+    list-style: none;
+    cursor: pointer;
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    user-select: none;
+  }
+  details.adv > summary::-webkit-details-marker { display: none; }
+  details.adv > summary::after { content: " +"; }
+  details.adv[open] > summary::after { content: " –"; }
+
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 10px;
+  }
+  .toggle-copy .t { font-size: 12.5px; font-weight: 500; }
+  .toggle-copy .d { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+  /* switch — different affordance than upstream Enable/Disable bricks */
+  .sw {
+    position: relative;
+    width: 40px; height: 24px;
+    border-radius: 999px;
+    background: var(--track);
+    border: 1px solid var(--line);
+    cursor: pointer;
+    flex: none;
+    padding: 0;
+  }
+  .sw.on { background: rgba(61,154,106,.35); border-color: rgba(61,154,106,.55); }
+  .sw i {
+    position: absolute; top: 2px; left: 2px;
+    width: 18px; height: 18px; border-radius: 50%;
+    background: var(--thumb);
+    transition: left 140ms ease;
+  }
+  .sw.on i { left: 18px; }
+
   .sess { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
-  .sess .s { display: flex; align-items: center; gap: 7px; font-size: 11.5px; line-height: 1.4; }
+  .sess .s { display: flex; align-items: center; gap: 7px; font-size: 11.5px; }
   .sess .swatch { width: 8px; height: 8px; border-radius: 50%; flex: none; }
-  .sess .who { font-weight: 600; flex: none; }
-  .sess .page { color: #8a8f98; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sess .who { font-weight: 600; }
+  .sess .page { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .foot {
+    margin-top: 12px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+  code {
+    font-size: 10.5px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 0 4px;
+  }
 </style>
 
-<h1>BeatBrowser <span id="ver" style="font-weight:400;color:#8a8f98;font-size:11px"></span></h1>
-<div class="sub">Let AI agents use your own Chrome</div>
-
-<div class="row">
-  <span class="dot" id="dot"></span>
-  <span class="state" id="state">Checking…</span>
-</div>
-<div class="tip" id="conntip" style="margin-top:6px"></div>
-
-<button id="btn">Reconnect</button>
-
-<div class="row" style="margin-top:10px">
-  <span class="dot" id="l2dot"></span>
-  <span class="state" id="l2state">High-fidelity mode</span>
-</div>
-<button id="l2btn" class="ghost">Enable</button>
-<div class="tip" id="l2tip">
-  On by default. Agents can dispatch trusted browser input events (sites that check
-  <code>isTrusted</code>, rich editors, background screenshots). Debugger attaches only for those seconds.
+<div class="top">
+  <img class="logo" src="icons/logo-light.png" width="28" height="28" alt="" />
+  <div class="name">BeatBrowser <span id="ver"></span></div>
 </div>
 
-<div class="row" style="margin-top:10px">
-  <span class="dot" id="markdot"></span>
-  <span class="state" id="markstate">Control marks</span>
+<div class="status">
+  <div class="status-left">
+    <span class="dot" id="dot"></span>
+    <span class="label" id="state">Checking…</span>
+  </div>
 </div>
-<button id="markbtn" class="ghost">Enable</button>
-<div class="sess" id="sess"></div>
-<div class="tip" id="marktip">
-  Agent-controlled pages get a colored border, breathing cursor, and cockpit badge —
-  so you always see which tab is driven and by whom.
-</div>
+<div class="meta" id="conntip" hidden></div>
+<button class="action" id="btn" type="button" hidden>Reconnect</button>
 
-<div class="tip" id="tip">If connection fails, run <code>beat-browser doctor</code>.
-  The extension is not gone — only the link to the terminal broke. Tap Reconnect; no need to reload from chrome://extensions.</div>
+<details class="adv">
+  <summary>Advanced</summary>
+
+  <div class="toggle-row">
+    <div class="toggle-copy">
+      <div class="t" id="l2state">High-fidelity input</div>
+      <div class="d">Trusted events for picky sites</div>
+    </div>
+    <button class="sw" id="l2btn" type="button" aria-pressed="false" title="Toggle high-fidelity"><i></i></button>
+  </div>
+  <span id="l2dot" class="dot" hidden></span>
+
+  <div class="toggle-row">
+    <div class="toggle-copy">
+      <div class="t" id="markstate">Show control marks</div>
+      <div class="d">Border + badge on agent tabs</div>
+    </div>
+    <button class="sw" id="markbtn" type="button" aria-pressed="false" title="Toggle control marks"><i></i></button>
+  </div>
+  <span id="markdot" class="dot" hidden></span>
+  <div class="sess" id="sess"></div>
+</details>
+
+<div class="foot" id="tip">Stuck? <code>beat-browser doctor</code></div>
 
 <script src="popup.js"></script>
