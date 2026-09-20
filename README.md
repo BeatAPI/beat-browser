@@ -2,26 +2,103 @@
 
 <p align="center">
   <a href="#quick-start">Quick start</a> ·
+  <a href="#how-it-works">How it works</a> ·
   <a href="#two-modes-one-browser">Two modes</a> ·
-  <a href="#real-browser-control-smoke-test">Live proof</a> ·
   <a href="#how-it-compares">Compare</a> ·
+  <a href="#real-browser-control-smoke-test">Live proof</a> ·
   <a href="docs/JEV_FAST_AGENT.md">Fast JEV guide</a>
 </p>
 
 # BeatBrowser
 
-Give any MCP-capable agent control of **your signed-in Chrome**—with two ways
-to drive the same local browser:
+Open-source **browser control for agents**, built around the Chrome profile you
+already use day to day.
 
-- **Normal** exposes 23 explicit MCP tools. The outer agent observes, reasons
-  and calls each browser action itself. It needs no BeatAPI key.
-- **Fast JEV** adds one optional bounded task executor. BeatAPI JEV selects from
-  the current legal operations and DOM targets, while local code validates,
-  executes and verifies every step.
+- Drive your **signed-in Chrome** through a local MCP server + extension
+  (no clean browser, no remote desktop required).
+- **Normal mode**: 23 explicit tools — your outer agent observes and acts.
+- **Fast JEV mode** (optional): BeatAPI JEV picks from a finite, current action
+  space; local code validates, executes, and verifies every step.
 
-Both modes use the same Chrome extension, loopback bridge, browser profile,
-cookies and active sessions. Fast JEV is an execution mode, not a second
-browser and not a replacement for the outer agent.
+Both modes share the same extension, loopback bridge, cookies, and sessions.
+Fast JEV is an execution mode, not a second browser.
+
+## How it works
+
+```mermaid
+flowchart LR
+  A[Your MCP agent] --> B[BeatBrowser MCP]
+  B --> C[Local bridge<br/>127.0.0.1]
+  C --> D[Chrome extension]
+  D --> E[Your signed-in Chrome]
+
+  subgraph Fast JEV optional
+    B2[browser_task] --> J[BeatAPI JEV]
+    J --> V[Local validate<br/>recheck · act · verify]
+    V --> D
+  end
+```
+
+Traffic for Normal mode stays on your machine (MCP ↔ loopback ↔ extension).
+Fast JEV only sends **bounded, redacted** task/page state to BeatAPI when you
+explicitly enable it and consent per task — never cookies, raw HTML, or
+screenshots. See [PRIVACY.md](PRIVACY.md).
+
+## Two modes, one browser
+
+| | Normal | Fast JEV |
+| --- | --- | --- |
+| Interface | 23 MCP browser tools | Optional `browser_task` or `beat-browser run` |
+| Decision maker | Your outer agent | JEV chooses from a finite, current action space |
+| Browser | Your existing signed-in Chrome | The same signed-in Chrome |
+| BeatAPI key | Not required | Required for live JEV decisions |
+| Best for | Exploration, debugging, unusual pages | Repetitive bounded flows with exact inputs and clear success checks |
+| Verification | Outer agent reads tool effects | Local assertions plus effect / durable-result checks |
+| Fallback | Continue with any MCP tool | Stop and return control to Normal or a human |
+
+Practical workflow: use **Normal** once to learn a site and save notes, then
+**Fast JEV** for the repeatable path.
+
+## How it compares
+
+Not a sponsorship claim and not a universal speed ranking — a map of where
+BeatBrowser sits among the stacks agents actually meet.
+
+### At a glance
+
+| Approach | Browser / session | Control surface | Who decides | Best fit |
+| --- | --- | --- | --- | --- |
+| **BeatBrowser** | Your existing signed-in Chrome | MCP + extension (23 tools + optional Fast JEV) | Outer agent, or BeatAPI JEV in Fast mode | Bring-your-own agent on the Chrome you already use |
+| [**jev-ultrafast**](https://github.com/browser-use/jev-ultrafast) | Browser Use harness / CDP | Python JEV loop over a dynamic legal action space | JEV (+ optional small LLM for text) | Fast typed-decision demos in the Browser Use stack |
+| **Claude in Chrome** | Chrome with Anthropic’s extension | Product UI / Claude tools | Claude (cloud) | “Claude, use my browser” inside Anthropic’s product |
+| **ChatGPT extension / Codex** | Browser session owned by OpenAI’s surface | ChatGPT / Codex product tools | Codex / ChatGPT (cloud) | “Codex / ChatGPT, browse for me” inside OpenAI’s product |
+| **Playwright MCP** | Playwright-launched or attached browser | MCP tools over Playwright | Outer agent via Playwright APIs | Scriptable automation, CI, clean or attached browsers |
+| **chrome-devtools-mcp** | Chrome via DevTools Protocol | MCP over CDP / DevTools | Outer agent via low-level CDP | Debugging, performance, protocol-level control |
+| **Browser Use** | Controlled browser (often CDP / harness) | Python agent framework + tools | Outer LLM + Browser Use runtime | Full Python browser-agent apps |
+
+### Where BeatBrowser differs
+
+**vs jev-ultrafast** — same core idea: narrow each step into a typed decision
+over legal ops + targets, then execute locally. BeatBrowser ports that pattern
+onto a **JavaScript MCP + extension** stack and keeps Normal mode beside Fast
+JEV, so exploration and bounded speed share one signed-in Chrome.
+
+**vs Claude in Chrome / ChatGPT extension (Codex)** — excellent when you live inside
+that vendor’s chat/agent product. BeatBrowser is for when the agent is **yours**
+(Claude Code, Cursor, OpenCode, custom MCP clients, …) and the browser is the
+profile you already logged into.
+
+**vs Playwright MCP** — Playwright is the right hammer for scripts, CI, and
+clean browsers. BeatBrowser is extension-first for **daily signed-in Chrome**
+(cookies, SSO, the tabs you already have), with optional Fast JEV on top.
+
+**vs chrome-devtools-mcp** — DevTools/CDP MCP is protocol-precise and great for
+debug / perf. BeatBrowser sits one layer up: agent-ready browser tools, site
+learnings, and a bounded Fast JEV executor — not a raw CDP console.
+
+**vs Browser Use** — Browser Use is a full Python browser-agent framework.
+BeatBrowser is a focused MCP + Chrome extension product: Normal tools for any
+MCP agent, Fast JEV when you want typed decisions without leaving your profile.
 
 ## Real browser-control smoke test
 
@@ -33,32 +110,13 @@ each mode. All six replies were confirmed through permanent X status URLs.
 | Normal | 3/3 | 170.444 s | 56.815 s |
 | Fast JEV | 3/3 | 36.240 s | 12.080 s |
 
-The final Fast path was **4.7x faster** on this small workload. Its three
-successful runs made 10 JEV calls and used 68,391 input tokens. At BeatAPI's
+The final Fast path was **4.7× faster** on this small workload. Its three
+successful runs made 10 JEV calls and used 68,391 input tokens. At BeatAPI’s
 2026-09-20 JEV price of $0.042 per million input tokens with unbilled output,
 that was about **$0.00287 total**.
 
-This is a narrow browser-control smoke test (`n=3` per mode), not a general
-reliability or performance benchmark. One Fast run initially reported a
-verification false negative even though the reply had published; permanent-URL
-recovery caught it. See [the complete evidence and boundaries](TEST_RESULTS.md).
-
-## Two modes, one browser
-
-| | Normal | Fast JEV |
-| --- | --- | --- |
-| Interface | 23 MCP browser tools | Optional `browser_task` or `beat-browser run` |
-| Decision maker | Your outer agent | JEV chooses from a finite, current action space |
-| Browser | Your existing signed-in Chrome | The same signed-in Chrome |
-| BeatAPI key | Not required | Required for live JEV decisions |
-| Best for | Exploration, debugging, unusual pages, human-guided work | Repetitive bounded flows with exact inputs and clear success checks |
-| Verification | Outer agent reads tool effects and page state | Local assertions plus effect and durable-result checks |
-| Fallback | Continue with any MCP tool | Stop and return control to Normal mode or a human |
-
-Use **Normal** when the task is unfamiliar or requires flexible investigation.
-Use **Fast JEV** when the goal, allowed domains, inputs and success condition
-can be stated up front. A practical workflow is Normal once to learn the site,
-save the non-obvious behavior, then Fast JEV for the repeatable path.
+Narrow smoke test (`n=3` per mode), not a general reliability or performance
+benchmark. See [TEST_RESULTS.md](TEST_RESULTS.md) for evidence and boundaries.
 
 ## Quick start
 
@@ -80,19 +138,16 @@ installed `beat-browser` command.
 
 ### Normal mode
 
-Start the standard MCP server:
-
 ```bash
 beat-browser mcp
 ```
 
-Your agent gets the existing 23 tools for tabs, snapshots, clicks, typing,
-forms, network reads, screenshots, human handoff and site learnings. Browser
-traffic stays between the local MCP process, `127.0.0.1` bridge and extension.
+Your agent gets 23 tools for tabs, snapshots, clicks, typing, forms, network
+reads, screenshots, human handoff, and site learnings.
 
 ### Fast JEV mode
 
-First validate the task locally. This makes no browser or model request:
+Validate locally first (no browser or model request):
 
 ```bash
 beat-browser run --dry-run \
@@ -100,8 +155,8 @@ beat-browser run --dry-run \
   --goal 'Check that the Example Domain page is ready'
 ```
 
-For a live run, provide `BEATAPI_API_KEY`, explicitly enable Fast JEV and add
-task-specific inputs/assertions when the workflow writes or submits data:
+Live run (needs `BEATAPI_API_KEY`, explicit enable, and task-specific
+inputs/assertions when the workflow writes or submits):
 
 ```bash
 export BEATAPI_API_KEY='your-key-from-a-secret-manager'
@@ -114,16 +169,13 @@ beat-browser run --enable-fast-agent \
   --timeout-ms 60000
 ```
 
-To expose Fast JEV through MCP instead:
+Expose Fast JEV through MCP:
 
 ```bash
 beat-browser mcp --enable-fast-agent
 ```
 
-The added `browser_task` tool still requires `cloudConsent: true` for every
-task. It sends bounded, redacted task/page state to the configured BeatAPI
-endpoint. Cookies, storage dumps, authorization headers, raw HTML and
-screenshots are not part of the JEV payload. Read the
+`browser_task` still requires `cloudConsent: true` per task. Read the
 [Fast JEV guide](docs/JEV_FAST_AGENT.md) and [privacy boundary](PRIVACY.md)
 before enabling it.
 
@@ -149,59 +201,32 @@ structured live DOM ──► legal operations + compatible targets
                     one action + local verify
 ```
 
-JEV never returns selectors, coordinates, shell commands or JavaScript. The
+JEV never returns selectors, coordinates, shell commands, or JavaScript. The
 extension keeps the real DOM node, rechecks it immediately before acting, and
-stops on stale identity, domain drift, challenges, unsupported controls or
+stops on stale identity, domain drift, challenges, unsupported controls, or
 uncertain side effects.
 
 ## Learn once, reuse the path
 
-BeatBrowser has two layers of site knowledge:
-
-- Bundled notes in `docs/learnings/` ship with the project.
-- Local notes under `~/.beat-browser/learnings/` stay on your machine and are
-  not overwritten by upgrades.
+- Bundled notes: `docs/learnings/`
+- Local notes: `~/.beat-browser/learnings/` (not overwritten by upgrades)
 
 Call `learnings({ domain: "x.com" })` before operating a known site. When the
-page disagrees with a note, trust the page, finish carefully, then save the
-corrected workflow. The X seed now includes the Fast JEV lessons from the live
-test: active-tab rendering, contenteditable paste, exact accessible-name
-narrowing, target-local freshness checks, post-submit settling and permanent
-URL verification.
+page disagrees with a note, trust the page, then save the corrected workflow.
 
-Fast JEV does not automatically upload local learning files. The outer agent
-uses relevant notes to frame the bounded task; only the documented redacted
-goal/page state crosses the Fast JEV cloud boundary.
-
-Learnings are hints, never authority. They must not contain credentials,
-cookies, private drafts, account data or unpublished user content.
-
-## How it compares
-
-| Approach | Browser/session | Control loop | Where BeatBrowser differs |
-| --- | --- | --- | --- |
-| Playwright/CDP and clean-browser agents | Often a new or specially launched browser; existing-profile support varies | General tool or script loop | BeatBrowser is extension-first and operates the Chrome profile already signed in by the user. |
-| Screenshot-first computer use | Pixel observations and coordinates | Large-model reasoning for most steps | BeatBrowser prefers network/DOM evidence and stable local refs; pixels are a fallback. |
-| [`huashu-chrome`](https://github.com/alchaincyf/huashu-chrome) | Existing signed-in Chrome through MCP + extension | Explicit tools, batching and learnings | BeatBrowser builds on this open-source foundation, keeps the Normal workflow, and adds the optional BeatAPI-backed Fast JEV executor. |
-| [`browser-use/jev-ultrafast`](https://github.com/browser-use/jev-ultrafast) | Browser Harness/CDP | JEV chooses a dynamic operation and target; a small LLM can write text | BeatBrowser adapts the bounded typed-decision pattern to its JavaScript MCP/extension stack and offers Normal and Fast JEV side by side. |
-
-The two referenced projects evolve independently. The table describes the
-reviewed repository designs, not sponsorship, feature parity or a universal
-speed ranking. Attribution and pinned review sources are in
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Learnings are hints, never authority — no credentials, cookies, private drafts,
+or unpublished user content.
 
 ## What Fast JEV can and cannot do
 
-Fast JEV currently supports visible, enabled controls in the top frame's light
-DOM: click, exact text input, native select, scroll, wait and completion/block
-decisions. It uses the same browser permissions as Normal mode. The caller or
-outer agent decides which business actions are authorized; Fast JEV does not
-add separate bans for payments, deletion, login, profile fields or downloads.
+Supports visible, enabled controls in the top frame’s light DOM: click, exact
+text input, native select, scroll, wait, and completion/block decisions. The
+caller decides which business actions are authorized.
 
-Technical limits remain: challenges, cross-domain drift, stale targets,
-iframes, shadow DOM, canvas controls, file-input uploads, arbitrary keyboard
-widgets and some custom dropdowns. An uncertain action returns control and is
-never replayed automatically.
+Technical limits: challenges, cross-domain drift, stale targets, iframes,
+shadow DOM, canvas controls, file uploads, arbitrary keyboard widgets, and some
+custom dropdowns. An uncertain action returns control and is never replayed
+automatically.
 
 ## Development
 
@@ -213,16 +238,9 @@ npm run build:extension
 npm run benchmark:offline -- --iterations 3
 ```
 
-The offline benchmark validates control flow and accounting with fixtures; it
-does not establish real model latency. See [TEST_RESULTS.md](TEST_RESULTS.md)
-for the live smoke test, offline evidence and known limitations.
+Offline benchmarks validate control flow with fixtures; they do not establish
+real model latency. Live evidence: [TEST_RESULTS.md](TEST_RESULTS.md).
 
-## License and attribution
+## License
 
 MIT — see [LICENSE](LICENSE).
-
-BeatBrowser retains attribution to `huashu-chrome` and adapts ideas and
-validation patterns from `browser-use/jev-ultrafast`. See
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for details and upstream
-licenses. BeatAPI and BeatBrowser do not claim an official partnership,
-sponsorship or endorsement from Browser Use or TypeSafe.

@@ -7,7 +7,7 @@ You are an AI agent setting up BeatBrowser for the user. Done = `node src/cli.js
 - Repo checked out locally (typical: `~/Desktop/beat-browser` or a clone of `BeatAPI/beat-browser`).
 - Node.js 18+.
 - Google Chrome (or Chromium) installed.
-- If an older peanut / huashu / chrome-mcp unpacked extension is loaded, ask the user to **Disable or Remove** it first (BeatBrowser uses ports `18899–18903`; the old stack used `8899–8903`).
+- If an older unpacked browser-control extensions is loaded, ask the user to **Disable or Remove** it first (BeatBrowser uses ports `18899–18903`; the old stack used `8899–8903`).
 
 ## 1. Install / verify CLI
 

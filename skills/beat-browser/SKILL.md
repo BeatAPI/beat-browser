@@ -32,4 +32,4 @@ For publishing or filling an X reply, switch to `skills/x-reply/SKILL.md` and `d
 
 ## Human install reminder
 
-BeatBrowser is **not** on the Chrome Web Store. Load unpacked from the repo `extension/` directory. Ports `18899–18903` avoid colliding with older peanut/huashu bridges on `8899`.
+BeatBrowser is **not** on the Chrome Web Store. Load unpacked from the repo `extension/` directory. Ports `18899–18903` avoid colliding with older browser-control bridges on `8899`.

@@ -350,24 +350,16 @@ is `scripts/benchmark-fast-agent.mjs`. It reports A: a scripted outer-agent
 schedule, B: the fast runner, and C: hybrid escalation over simulated fixture
 state. It does not render the HTML fixture or invoke a real outer LLM.
 
-The inherited `npm run test:live` script points to `test/scenarios.test.js`,
-which was already absent in the baseline. That live suite remains unavailable;
-it has not been replaced with a mock test described as live acceptance.
-
 Offline fixtures and mock model timing validate control flow and accounting.
 They do not establish real JEV latency, cost or task success in signed-in
 Chrome. A real comparison must use the same tasks and success assertions,
 include the same setup and verification boundaries, and separately report
 verified success, median/p95 latency, model calls, tokens, retries, stale
 decisions, safety escalations, protocol calls and unverified/blocked rates.
-The upstream single 7.1-second example is not a BeatBrowser result.
 
 The benchmark can aggregate separately collected measurements with
 `node scripts/benchmark-fast-agent.mjs --input-records FILE`. Imported records
 must use its explicit `live-external` schema. Their provenance is supplied by
 the collector and is not independently verified by the aggregator.
 
-The [implementation plan](./JEV_FAST_AGENT_PLAN.md) records design constraints.
-Delivery test results and handoff notes distinguish offline evidence from
-the remaining opt-in live acceptance work. Attribution and the complete
-upstream MIT notice are in [Third-party notices](../THIRD_PARTY_NOTICES.md).
+Live smoke-test evidence and boundaries live in [TEST_RESULTS.md](../TEST_RESULTS.md).

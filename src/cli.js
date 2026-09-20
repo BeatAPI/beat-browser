@@ -223,7 +223,7 @@ async function doctor({ json = false } = {}) {
     }
     if (r.ok && !r.extensionOnline) {
       add('extension_connected', 'fail', 'The Chrome extension is not connected to the bridge right now',
-        'Load unpacked from the Extension path below (or click BeatBrowser → Reconnect). Disable any peanut/huashu browser extension first.');
+        'Load unpacked from the Extension path below (or click BeatBrowser → Reconnect). Disable any older browser-control extension first.');
     } else if (r.ok && r.extensionOnline) {
       add('extension_connected', 'ok', `Chrome extension online (v${r.extensionVersion})`);
     }

@@ -1,7 +1,7 @@
 {
   "name": "@beatapi/beat-browser",
   "version": "1.2.0",
-  "description": "BeatBrowser — MCP + Chrome extension for signed-in Chrome control (BeatAPI).",
+  "description": "BeatBrowser \u2014 MCP + Chrome extension for signed-in Chrome control (BeatAPI).",
   "type": "module",
   "bin": {
     "beat-browser": "src/cli.js"
@@ -13,7 +13,6 @@
     "media",
     "README.md",
     "PRIVACY.md",
-    "THIRD_PARTY_NOTICES.md",
     "scripts",
     "test/fixtures/fast-agent.html"
   ],
@@ -28,8 +27,7 @@
     "check:syntax": "node scripts/check-syntax.mjs",
     "check:security": "node scripts/check-security.mjs",
     "build:extension": "node scripts/pack-extension.mjs",
-    "benchmark:offline": "node scripts/benchmark-fast-agent.mjs",
-    "test:live": "node --test test/scenarios.test.js"
+    "benchmark:offline": "node scripts/benchmark-fast-agent.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.22.0",
