@@ -94,7 +94,7 @@ switch (cmd) {
   }
 
   case 'doctor':
-    await doctor();
+    await doctor({ json: has('--json') });
     break;
 
   case 'extension':
@@ -122,7 +122,7 @@ switch (cmd) {
 
   beat-browser install        install: configure every detected agent, then guide the extension setup
   beat-browser mcp            start the MCP server (agent configs point here; install writes it for you)
-  beat-browser doctor         diagnose connection problems
+  beat-browser doctor [--json] diagnose connection problems (machine-readable with --json)
   beat-browser extension      print the extension loading steps
   beat-browser audit [-n 30]  show recent browser operations
   beat-browser audit --stats [--days 7]   usage stats: turns, busiest commands, where time is wasted
@@ -132,24 +132,44 @@ switch (cmd) {
 Config directory: ${HOME}`);
 }
 
-async function doctor() {
-  const ok = (s) => console.log(`  ✅ ${s}`);
-  const bad = (s, fix) => { console.log(`  ❌ ${s}`); if (fix) console.log(`     → ${fix}`); };
+async function doctor({ json = false } = {}) {
+  const report = {
+    ok: true,
+    checks: [],
+    home: HOME,
+    port: DEFAULT_PORT,
+    extensionDir: path.join(ROOT, 'extension'),
+    bridge: null,
+    handshake: null,
+    extensionOnline: false,
+    extensionVersion: null,
+    versionMismatch: false,
+    extensions: [],
+    hints: [],
+    logs: { bridge: LOG_FILE, audit: AUDIT_FILE },
+  };
+  const add = (id, status, message, hint) => {
+    const row = { id, status, message };
+    if (hint) row.hint = hint;
+    report.checks.push(row);
+    if (status === 'fail') {
+      report.ok = false;
+      if (hint) report.hints.push(hint);
+    }
+  };
 
-  console.log('\nbeat-browser doctor\n');
+  // Config directory
+  if (fs.existsSync(HOME)) add('home', 'ok', HOME);
+  else add('home', 'fail', `${HOME} does not exist`, 'Run `beat-browser mcp` once; it creates the directory');
 
-  console.log('Config directory');
-  fs.existsSync(HOME) ? ok(HOME) : bad(`${HOME} does not exist`, 'Run `beat-browser mcp` once; it creates the directory');
-
-  console.log('\nBridge');
+  // Bridge
   let info = readBridgeInfo();
   let alive = false;
   if (info) { try { process.kill(info.pid, 0); alive = true; } catch {} }
   if (!alive) {
-    
-    
-    
-    console.log(`  ·  Bridge is not running${info ? ` (bridge.json points at pid ${info.pid}, which is gone)` : ''}; starting it and probing again…`);
+    if (!json) {
+      console.log(`  ·  Bridge is not running${info ? ` (bridge.json points at pid ${info.pid}, which is gone)` : ''}; starting it and probing again…`);
+    }
     const { tryStartBridge } = await import('./lib/rpc.js');
     tryStartBridge();
     const until = Date.now() + 6000;
@@ -159,76 +179,92 @@ async function doctor() {
       if (info?.pid) { try { process.kill(info.pid, 0); alive = true; break; } catch {} }
     }
     if (!alive) {
-      bad('Bridge failed to start', `See the last lines of ${LOG_FILE}. This also happens when another program holds port ${DEFAULT_PORT} (lsof -i :${DEFAULT_PORT})`);
+      add('bridge', 'fail', 'Bridge failed to start',
+        `See the last lines of ${LOG_FILE}. This also happens when another program holds port ${DEFAULT_PORT} (lsof -i :${DEFAULT_PORT})`);
     }
   }
   if (alive) {
-    ok(`pid ${info.pid} · port ${info.port} · started ${info.startedAt ? new Date(info.startedAt).toLocaleTimeString('en-GB', { hour12: false }) : '?'}`);
-    {
-      const r = await probe(info);
-      r.ok ? ok(`Handshake OK${r.extensionOnline ? ` · Chrome extension online (v${r.extensionVersion})` : ''}`) : bad('Handshake failed: ' + r.error);
-      if (r.versionMismatch) bad(`Extension version ${r.extensionVersion} does not match the CLI`, 'Reload it at chrome://extensions, then refresh the target page');
-      
-      
-      if ((r.extensions || []).length > 1) {
-        console.log(`  ℹ️  ${r.extensions.length} Chrome instances are connected to the bridge:`);
-        for (const e of r.extensions) {
-          console.log(`       ${e.primary ? '→' : ' '} Chrome ${e.chrome} · extension ${e.version}${e.headless ? ' · headless' : ''}${e.primary ? ' (commands go here)' : ''}`);
-        }
-        if (r.extensions.some((e) => e.headless)) {
-          console.log('       The headless one is usually an orphan from an earlier scrape; safe to kill');
-        }
-      }
-      if (r.ok && !r.extensionOnline) {
-        
-        
-        
-        bad('The Chrome extension is not connected to the bridge right now',
-          'Click the BeatBrowser icon in the Chrome toolbar and press "Reconnect", then run doctor again (the extension did not disappear, only the link dropped). '
-          + 'No icon? Chrome is closed, or the extension is not installed or is disabled: load it from the directory printed under "Extension" below.');
-      }
+    report.bridge = {
+      pid: info.pid,
+      port: info.port,
+      startedAt: info.startedAt || null,
+      version: info.version || null,
+    };
+    add('bridge', 'ok', `pid ${info.pid} · port ${info.port} · started ${info.startedAt ? new Date(info.startedAt).toLocaleTimeString('en-GB', { hour12: false }) : '?'}`);
+    const r = await probe(info);
+    report.handshake = { ok: !!r.ok, error: r.error || null };
+    report.extensionOnline = !!r.extensionOnline;
+    report.extensionVersion = r.extensionVersion || null;
+    report.versionMismatch = !!r.versionMismatch;
+    report.extensions = r.extensions || [];
+    if (r.ok) {
+      add('handshake', 'ok', `Handshake OK${r.extensionOnline ? ` · Chrome extension online (v${r.extensionVersion})` : ''}`);
+    } else {
+      add('handshake', 'fail', 'Handshake failed: ' + r.error);
+    }
+    if (r.versionMismatch) {
+      add('version', 'fail', `Extension version ${r.extensionVersion} does not match the CLI`,
+        'Reload it at chrome://extensions, then refresh the target page');
+    }
+    if (r.ok && !r.extensionOnline) {
+      add('extension_connected', 'fail', 'The Chrome extension is not connected to the bridge right now',
+        'Load unpacked from the Extension path below (or click BeatBrowser → Reconnect). Disable any peanut/huashu browser extension first.');
+    } else if (r.ok && r.extensionOnline) {
+      add('extension_connected', 'ok', `Chrome extension online (v${r.extensionVersion})`);
     }
   }
 
-  console.log('\nExtension');
+  // Extension files on disk
   const mf = path.join(ROOT, 'extension', 'manifest.json');
-  fs.existsSync(mf)
-    ? ok(`${path.join(ROOT, 'extension')} (this only proves the files exist; check the "extension online" line above to see whether Chrome loaded them)`)
-    : bad('Extension directory is missing', 'Reinstall beat-browser');
+  if (fs.existsSync(mf)) {
+    add('extension_files', 'ok', path.join(ROOT, 'extension'));
+  } else {
+    add('extension_files', 'fail', 'Extension directory is missing', 'Reinstall beat-browser / re-clone the repo');
+  }
 
-  
-  try {
-    const lines = fs.readFileSync(LOG_FILE, 'utf8').trim().split('\n').slice(-400);
-    let lastDown = null, lastUp = null;
-    for (const l of lines) {
-      if (l.includes('extension disconnected')) lastDown = l.slice(1, 9);
-      else if (l.includes('extension connected')) lastUp = l.slice(1, 9);
+  // Human output
+  if (!json) {
+    const ok = (s) => console.log(`  ✅ ${s}`);
+    const bad = (s, fix) => { console.log(`  ❌ ${s}`); if (fix) console.log(`     → ${fix}`); };
+    console.log('\nbeat-browser doctor\n');
+    console.log('Config directory');
+    for (const c of report.checks.filter((x) => x.id === 'home')) {
+      c.status === 'ok' ? ok(c.message) : bad(c.message, c.hint);
     }
-    if (lastDown) console.log(`  ·  Last disconnect ${lastDown}${lastUp ? `, last connect ${lastUp}` : ', no reconnect since'} (bridge.log, time of day only)`);
-  } catch {  }
-
-  
-  
-  try {
-    const { LEARNINGS_DIR } = await import('./lib/learnings.js');
-    const hits = [];
-    for (const f of fs.readdirSync(LEARNINGS_DIR)) {
-      if (!f.endsWith('.md')) continue;
-      for (const line of fs.readFileSync(path.join(LEARNINGS_DIR, f), 'utf8').split('\n')) {
-        if (/beat-browser/.test(line) && /worked|broken|bug|silent|bypass|fail|invalid|noop/i.test(line)) hits.push(`${f}: ${line.trim().slice(0, 110)}`);
-        if (hits.length >= 6) break;
+    console.log('\nBridge');
+    for (const c of report.checks.filter((x) => ['bridge', 'handshake', 'version', 'extension_connected'].includes(x.id))) {
+      c.status === 'ok' ? ok(c.message) : bad(c.message, c.hint);
+    }
+    if ((report.extensions || []).length > 1) {
+      console.log(`  ℹ️  ${report.extensions.length} Chrome instances are connected to the bridge:`);
+      for (const e of report.extensions) {
+        console.log(`       ${e.primary ? '→' : ' '} Chrome ${e.chrome} · extension ${e.version}${e.headless ? ' · headless' : ''}${e.primary ? ' (commands go here)' : ''}`);
       }
     }
-    if (hits.length) {
-      console.log('\nProduct problems noted in the learnings (written by agents, worth a look)');
-      for (const h of hits) console.log(`  ·  ${h}`);
+    console.log('\nExtension');
+    for (const c of report.checks.filter((x) => x.id === 'extension_files')) {
+      c.status === 'ok'
+        ? ok(`${c.message} (files on disk only; online status is under Bridge)`)
+        : bad(c.message, c.hint);
     }
-  } catch {  }
+    try {
+      const lines = fs.readFileSync(LOG_FILE, 'utf8').trim().split('\n').slice(-400);
+      let lastDown = null, lastUp = null;
+      for (const l of lines) {
+        if (l.includes('extension disconnected')) lastDown = l.slice(1, 9);
+        else if (l.includes('extension connected')) lastUp = l.slice(1, 9);
+      }
+      if (lastDown) console.log(`  ·  Last disconnect ${lastDown}${lastUp ? `, last connect ${lastUp}` : ', no reconnect since'} (bridge.log, time of day only)`);
+    } catch { }
+    console.log('\nLogs');
+    console.log(`  bridge log   ${LOG_FILE}`);
+    console.log(`  audit log    ${AUDIT_FILE}   (view with: beat-browser audit)`);
+    console.log('');
+  } else {
+    console.log(JSON.stringify(report, null, 2));
+  }
 
-  console.log('\nLogs');
-  console.log(`  bridge log   ${LOG_FILE}`);
-  console.log(`  audit log    ${AUDIT_FILE}   (view with: beat-browser audit)`);
-  console.log('');
+  if (!report.ok) process.exitCode = 1;
 }
 
 function auditStats(days) {
