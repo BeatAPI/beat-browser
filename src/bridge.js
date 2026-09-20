@@ -20,8 +20,9 @@ const EXT_PROBE_MS = 15000;
 const ORPHAN_GRACE_MS = 15000;       
 
 export function startBridge({ port = DEFAULT_PORT, token = newToken(), writeInfo = true, orphanGraceMs = ORPHAN_GRACE_MS,
-  silenceMs = EXT_SILENCE_MS, probeMs = EXT_PROBE_MS, tickMs = 20000 } = {}) {
-  ensureHome();
+  silenceMs = EXT_SILENCE_MS, probeMs = EXT_PROBE_MS, tickMs = 20000, auditFn = audit } = {}) {
+  if (writeInfo) ensureHome();
+  const audit = auditFn;
 
   const agents = new Set();      
   
@@ -38,6 +39,9 @@ export function startBridge({ port = DEFAULT_PORT, token = newToken(), writeInfo
   
   
   const pending = new Map();
+  // Pin each fast run to one extension socket. A later Chrome heartbeat must
+  // never redirect its tab IDs, actions or cancellation to a different browser.
+  const fastOwners = new Map();
   let connSeq = 0;
 
   
@@ -135,6 +139,11 @@ export function startBridge({ port = DEFAULT_PORT, token = newToken(), writeInfo
     ws.on('close', () => {
       clearTimeout(helloTimer);
       if (agents.delete(ws)) {
+        for (const [key, run] of fastOwners) {
+          if (run.agent !== ws) continue;
+          send(run.extension, { type: 'cmd', id: `abort:${key}`, cmd: 'fast_abort', params: { runId: run.runId }, sid: ws.sid });
+          fastOwners.delete(key);
+        }
         
         
         
@@ -276,6 +285,8 @@ export function startBridge({ port = DEFAULT_PORT, token = newToken(), writeInfo
   
   function enqueue(ws, msg) {
     const fail = () => send(ws, { type: 'res', id: msg.id, ok: false, error: { code: 'NO_EXTENSION', message: NO_EXT_MSG } });
+    // Bounded decisions must never be replayed after an extension reconnects.
+    if (String(msg.cmd).startsWith('fast_')) return fail();
     if (waiting.length >= WAIT_CAP) return fail();
 
     const ms = Math.min(Number(msg.timeout) || WAIT_MAX, WAIT_MAX);
@@ -302,6 +313,30 @@ export function startBridge({ port = DEFAULT_PORT, token = newToken(), writeInfo
   }
 
   function dispatch(ws, msg, target = primary()) {
+    if (String(msg.cmd).startsWith('fast_')) {
+      const runId = msg.params?.runId;
+      if (typeof runId !== 'string' || !/^[A-Za-z0-9_-]{8,80}$/.test(runId)) {
+        return send(ws, { type: 'res', id: msg.id, ok: false, error: { code: 'INVALID_REQUEST', message: 'A valid bounded run identifier is required.' } });
+      }
+      const ownerKey = `${ws.connId}:${runId}`;
+      let run = fastOwners.get(ownerKey);
+      if (!run && !['fast_open', 'fast_snapshot', 'fast_abort'].includes(msg.cmd)) {
+        return send(ws, { type: 'res', id: msg.id, ok: false, error: { code: 'INVALID_REQUEST', message: 'The bounded run has not been opened on this connection.' } });
+      }
+      if (!run && msg.cmd !== 'fast_abort') {
+        if (!target) return enqueue(ws, msg);
+        for (const [key, old] of fastOwners) if (old.deadline <= Date.now()) fastOwners.delete(key);
+        if (fastOwners.size >= 256) return send(ws, { type: 'res', id: msg.id, ok: false, error: { code: 'FAST_AGENT_BUSY', message: 'Too many active bounded runs.' } });
+        run = { agent: ws, extension: target, runId, deadline: Number(msg.params?.deadline) || Date.now(), canceled: false };
+        fastOwners.set(ownerKey, run);
+      }
+      if (run) {
+        target = run.extension;
+        if (run.canceled && msg.cmd !== 'fast_abort') return send(ws, { type: 'res', id: msg.id, ok: false, error: { code: 'ABORTED', message: 'The bounded run was canceled.' } });
+        if (msg.cmd === 'fast_abort') run.canceled = true;
+      }
+      if (!target || !extensions.has(target) || target.readyState !== 1) return enqueue(ws, msg);
+    }
     if (!target) return enqueue(ws, msg);
     const gate = checkSite(msg);
     if (gate) {
@@ -325,7 +360,8 @@ export function startBridge({ port = DEFAULT_PORT, token = newToken(), writeInfo
     
     
     
-    audit({ ev: 'cmd', id: key, cmd: msg.cmd, client: ws.client, sid: ws.sid, params: redact(msg.params) });
+    audit({ ev: 'cmd', id: key, cmd: msg.cmd, client: ws.client, sid: ws.sid,
+      params: String(msg.cmd).startsWith('fast_') ? redactFastParams(msg.params) : redact(msg.params) });
     
     
     
@@ -349,6 +385,7 @@ export function startBridge({ port = DEFAULT_PORT, token = newToken(), writeInfo
         for (const [k, v] of pending) if (v.id === msg.id) { key = k; p = v; break; }
       }
       if (!p) return; 
+      if (String(p.cmd).startsWith('fast_') && p.ext !== ws) return;
       clearTimeout(p.timer);
       clearTimeout(p.orphanTimer);   
       pending.delete(key);
@@ -490,4 +527,14 @@ function scrub(v, depth = 0) {
 export function redact(params) {
   if (!params || typeof params !== 'object') return params;
   return scrub(params);
+}
+
+// Fast protocol logging is metadata-only: goals, assertions, URLs and input text
+// may contain personal information even when their property names look harmless.
+export function redactFastParams(params) {
+  const out = {};
+  if (['CLICK', 'TYPE_TEXT', 'SELECT', 'SCROLL_UP', 'SCROLL_DOWN'].includes(params?.operation)) out.operation = params.operation;
+  if (/^e[1-9]\d{0,5}$/.test(params?.ref || '')) out.ref = params.ref;
+  if (/^s\d{1,12}$/.test(params?.snapshotId || '')) out.snapshotId = params.snapshotId;
+  return out;
 }

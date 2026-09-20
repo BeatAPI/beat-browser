@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import WebSocket from 'ws';
 import { DEFAULT_PORT, LOCK_FILE, LOG_FILE, BRIDGE_FILE, readBridgeInfo, ensureHome } from './paths.js';
 import { VERSION } from './version.js';
 
@@ -44,10 +45,11 @@ export class BridgeClient {
     return true;
   }
 
-  async connect({ timeoutMs = 15000 } = {}) {
+  async connect({ timeoutMs = 15000, signal } = {}) {
     const deadline = Date.now() + timeoutMs;
     let spawned = false;
     while (Date.now() < deadline) {
+      if (signal?.aborted) throw Object.assign(new Error('Connection canceled'), { code: 'ABORTED' });
       const info = readBridgeInfo();
       
       
@@ -60,9 +62,10 @@ export class BridgeClient {
       }
       if (info) {
         try {
-          await this.#open(info);
+          await this.#open(info, signal);
           return this;
         } catch {
+          if (signal?.aborted) throw Object.assign(new Error('Connection canceled'), { code: 'ABORTED' });
           
         }
       }
@@ -72,19 +75,33 @@ export class BridgeClient {
     throw new Error('Cannot reach the beat-browser bridge. Run `beat-browser doctor` to see where it is stuck');
   }
 
-  #open(info) {
+  #open(info, signal) {
     return new Promise((resolve, reject) => {
       
       const ws = new WebSocket(`ws://127.0.0.1:${info.port || DEFAULT_PORT}`);
-      const fail = (e) => reject(e instanceof Error ? e : new Error('Bridge connection failed'));
+      let finished = false;
+      const cleanup = () => { clearTimeout(t); signal?.removeEventListener('abort', cancel); };
+      const fail = (e) => {
+        if (finished) return;
+        finished = true;
+        cleanup();
+        try { ws.close(); } catch { /* Connection may still be opening. */ }
+        reject(e instanceof Error ? e : new Error('Bridge connection failed'));
+      };
+      const cancel = () => fail(Object.assign(new Error('Connection canceled'), { code: 'ABORTED' }));
       const t = setTimeout(() => { ws.close(); fail(new Error('Handshake timed out')); }, 4000);
+
+      signal?.addEventListener('abort', cancel, { once: true });
+      if (signal?.aborted) { cancel(); return; }
 
       ws.onerror = fail;
       ws.onopen = () => ws.send(JSON.stringify({ type: 'hello', role: 'agent', token: info.token, client: this.client, label: this.label, sessionId: this.sessionId, v: 1 }));
       ws.onmessage = (ev) => {
         const msg = JSON.parse(ev.data);
         if (msg.type === 'welcome') {
-          clearTimeout(t);
+          if (finished) return;
+          finished = true;
+          cleanup();
           this.ws = ws;
           this.extensionOnline = !!msg.extensionOnline;
           this.extensionVersion = msg.extensionVersion;
@@ -106,6 +123,7 @@ export class BridgeClient {
       if (!w) return;
       this.waiting.delete(msg.id);
       clearTimeout(w.timer);
+      w.cleanup?.();
       msg.ok ? w.resolve(msg.data ?? {}) : w.reject(Object.assign(new Error(msg.error?.message || 'Command failed'), { code: msg.error?.code || 'INTERNAL' }));
       return;
     }
@@ -127,21 +145,33 @@ export class BridgeClient {
   #failAll(reason) {
     for (const [, w] of this.waiting) {
       clearTimeout(w.timer);
+      w.cleanup?.();
       w.reject(Object.assign(new Error(reason), { code: 'INTERNAL' }));
     }
     this.waiting.clear();
   }
 
   
-  async call(cmd, params = {}, { tabId, timeoutMs = 35000 } = {}) {
-    if (!this.ws) await this.connect();
+  async call(cmd, params = {}, { tabId, timeoutMs = 35000, signal } = {}) {
+    if (signal?.aborted) throw Object.assign(new Error('Command canceled'), { code: 'ABORTED' });
+    if (!this.ws) await this.connect({ signal });
+    if (signal?.aborted) throw Object.assign(new Error('Command canceled'), { code: 'ABORTED' });
     const id = 'c' + ++this.seq;
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.waiting.delete(id);
+        cleanup();
         reject(Object.assign(new Error('Bridge did not respond'), { code: 'TIMEOUT' }));
       }, timeoutMs);
-      this.waiting.set(id, { resolve, reject, timer });
+      const cancel = () => {
+        clearTimeout(timer);
+        this.waiting.delete(id);
+        cleanup();
+        reject(Object.assign(new Error('Command canceled'), { code: 'ABORTED' }));
+      };
+      const cleanup = () => signal?.removeEventListener('abort', cancel);
+      signal?.addEventListener('abort', cancel, { once: true });
+      this.waiting.set(id, { resolve, reject, timer, cleanup });
       
       this.ws.send(JSON.stringify({ type: 'cmd', id, cmd, params, tabId, timeout: timeoutMs - 3000 }));
     });

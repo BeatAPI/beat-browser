@@ -9,6 +9,10 @@ import { CRED_URL, redactCreds } from './redact.js';
 import { identityOf, stripMarkPrefix } from './identity.js';
 import { validateScript, condText, repeatMax, EXEC_BUDGET } from './script.js';
 
+const fastRuns = new Map();
+const fastTabWatches = new Map();
+const fastCanceledRuns = new Set();
+
 //
 
 //
@@ -238,6 +242,10 @@ async function onMessage(msg) {
   try {
     const handler = HANDLERS[msg.cmd];
     if (!handler) throw err('INTERNAL', `Unknown command ${msg.cmd}`);
+    if (msg.cmd.startsWith('fast_')) {
+      const data = await handler(msg.params || {}, msg.tabId, { sid: msg.sid });
+      return reply(msg.id, true, data, msg.__k);
+    }
     
     
     
@@ -277,6 +285,7 @@ async function onMessage(msg) {
     }
     reply(msg.id, true, data, msg.__k);
   } catch (e) {
+    if (String(msg.cmd).startsWith('fast_')) return reply(msg.id, false, { code: 'FAST_FAILED', message: 'Fast command failed; no automatic retry is permitted.' }, msg.__k);
     reply(msg.id, false, { code: e.code || 'INTERNAL', message: e.message || String(e) }, msg.__k);
   }
 }
@@ -301,8 +310,8 @@ async function coachNote(sid, cmd) {
     if (n + 1 === 8) {
       await chrome.storage.session.remove(key);   
       return '\n\n💡 Eight single-step actions in a row. If your host can start a subagent, hand this loop to a '
-        + 'fast-model driver (pass the goal and this site\'s learnings) and only review the plan and results yourself: payments, sensitive '
-        + 'submits, ask outcomes and plan changes must come back to you. If you cannot start a subagent, ignore this.';
+        + 'fast-model driver (pass the goal and this site\'s learnings) and review its plan and results yourself. '
+        + 'The caller remains responsible for business-action authorization. If you cannot start a subagent, ignore this.';
     }
   } catch {  }
   return '';
@@ -493,6 +502,8 @@ const postMark = (tabId, msg) => chrome.tabs.sendMessage(tabId, msg).then((r) =>
 
 async function syncMark(tabId, { act, sid, plan } = {}) {
   if (!tabId) return;
+  const fastRun = fastTabWatches.get(tabId);
+  if (fastRun && !fastRun.canceled && Date.now() < fastRun.deadline) return;
   try {
     if (!(await markEnabled())) return;
     const owners = await ownersOfTab(tabId);
@@ -1406,7 +1417,249 @@ async function perform(id, cmd, p, ctx) {
   return { ...snap, text: `${head}\n\n${snap.text}`, navigated: r.navigated || !!r.followed };
 }
 
+// Fast commands deliberately bypass manual input layers, retries, reload recovery,
+// action notes and automatic tab following. Every mutation has a bounded run ID.
+const FAST_RUN_ID = /^[A-Za-z0-9_-]{8,80}$/;
+const FAST_STICKY_REASONS = new Set(['domain-out-of-scope', 'new-tab-opened', 'aborted', 'deadline-exceeded', 'execution-unknown', 'challenge']);
+const FAST_BASE_KEYS = ['runId', 'allowedDomains', 'deadline'];
+
+function fastRequestKeys(p, extra = []) {
+  return p && typeof p === 'object' && !Array.isArray(p)
+    && Object.keys(p).every((key) => [...FAST_BASE_KEYS, ...extra].includes(key));
+}
+
+function fastConfiguration(p) {
+  if (!FAST_RUN_ID.test(p.runId || '') || !Number.isSafeInteger(p.deadline)
+    || !Array.isArray(p.allowedDomains) || !p.allowedDomains.length || p.allowedDomains.length > 32
+    || p.allowedDomains.some((host) => typeof host !== 'string' || !host || host !== host.toLowerCase()
+      || !/^[a-z0-9.-]+$/.test(host) || host.startsWith('.') || host.endsWith('.') || host.includes('..'))) return 'malformed-request';
+  if (fastCanceledRuns.has(p.runId)) return 'aborted';
+  if (Date.now() >= p.deadline) return 'deadline-exceeded';
+  return null;
+}
+
+function fastAllowedUrl(raw, domains) {
+  try {
+    const url = new URL(raw);
+    return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password && domains.includes(url.hostname);
+  } catch { return false; }
+}
+
+function fastUnsafeUrlText(raw) {
+  try {
+    const url = new URL(raw);
+    let text = `${url.pathname}${url.search}${url.hash}`;
+    for (let i = 0; i < 3; i++) { const next = decodeURIComponent(text); if (next === text) break; text = next; }
+    text = text.normalize('NFKC').replace(/[\u200b-\u200f\u2060\ufeff\u00ad]/g, '');
+    return /%[0-9a-f]{2}/i.test(text) || /\p{L}/u.test(text.replace(/[\x00-\x7f]/g, ''));
+  } catch { return true; }
+}
+
+function fastPublicUrl(raw) {
+  try { const url = new URL(raw); return `${url.origin}${url.pathname}`; } catch { return ''; }
+}
+
+function fastRunStop(run) {
+  if (!run) return 'unknown-run';
+  if (fastCanceledRuns.has(run.runId) || run.canceled) return 'aborted';
+  if (Date.now() >= run.deadline) return 'deadline-exceeded';
+  return run.blockedReason || null;
+}
+
+async function fastTabScope(run) {
+  let reason = fastRunStop(run);
+  if (reason) return reason;
+  try {
+    const tab = await chrome.tabs.get(run.tabId);
+    reason = fastRunStop(run);
+    if (reason) return reason;
+    const provisional = run.settingUp && (!tab.url || tab.url === 'about:blank' || (tab.status === 'loading' && !!tab.pendingUrl && fastAllowedUrl(tab.pendingUrl, run.allowedDomains)));
+    if ((!provisional && !fastAllowedUrl(tab.url || tab.pendingUrl, run.allowedDomains))
+      || (tab.pendingUrl && !fastAllowedUrl(tab.pendingUrl, run.allowedDomains))) return (run.blockedReason = 'domain-out-of-scope');
+    return null;
+  } catch { return 'tab-unavailable'; }
+}
+
+async function fastGetRun(p, tabId, { initialize = false, settingUp = false } = {}) {
+  const reason = fastConfiguration(p);
+  if (reason) return { reason };
+  if (!Number.isSafeInteger(tabId) || tabId <= 0) return { reason: 'tab-required' };
+  let run = fastRuns.get(p.runId);
+  if (run) {
+    if (run.tabId !== tabId || run.deadline !== p.deadline || JSON.stringify(run.allowedDomains) !== JSON.stringify(p.allowedDomains)) return { reason: 'run-config-changed' };
+    return { run, reason: await fastTabScope(run) };
+  }
+  if (!initialize) return { reason: 'unknown-run' };
+  let tab;
+  try { tab = await chrome.tabs.get(tabId); } catch { return { reason: 'tab-unavailable' }; }
+  if (fastConfiguration(p)) return { reason: fastConfiguration(p) };
+  const provisional = settingUp && (!tab.url || tab.url === 'about:blank' || (tab.status === 'loading' && !!tab.pendingUrl && fastAllowedUrl(tab.pendingUrl, p.allowedDomains)));
+  if ((!provisional && !fastAllowedUrl(tab.url || tab.pendingUrl, p.allowedDomains))
+    || (tab.pendingUrl && !fastAllowedUrl(tab.pendingUrl, p.allowedDomains))) return { reason: 'domain-out-of-scope' };
+  const prior = fastTabWatches.get(tabId);
+  if (prior && prior.runId !== p.runId) {
+    prior.canceled = true;
+    fastCanceledRuns.add(prior.runId);
+    void chrome.tabs.sendMessage(tabId, { __hc: 'fast_abort', runId: prior.runId }, { frameId: 0 }).catch(() => {});
+  }
+  run = { runId: p.runId, deadline: p.deadline, allowedDomains: [...p.allowedDomains], tabId,
+    windowId: tab.windowId, lastUrl: tab.url || tab.pendingUrl || '', settingUp, blockedReason: null };
+  fastRuns.set(p.runId, run);
+  fastTabWatches.set(tabId, run);
+  // Keep bounded records. Expired run IDs cannot dispatch because of deadline checks.
+  if (fastRuns.size > 128) for (const [id, old] of fastRuns) {
+    if (Date.now() >= old.deadline && old !== run) { fastRuns.delete(id); if (fastTabWatches.get(old.tabId) === old) fastTabWatches.delete(old.tabId); }
+  }
+  return { run, reason: null };
+}
+
+async function fastContent(run, command, p) {
+  let reason = await fastTabScope(run);
+  if (reason) return { blockedReason: reason };
+  // Injection is frame 0 only and never reloads a user tab when it fails.
+  let pong = false;
+  try { pong = !!(await chrome.tabs.sendMessage(run.tabId, { __hc: 'ping' }, { frameId: 0 }))?.pong; } catch { /* Inject once below. */ }
+  reason = await fastTabScope(run);
+  if (reason) return { blockedReason: reason };
+  if (!pong) {
+    try { await chrome.scripting.executeScript({ target: { tabId: run.tabId, frameIds: [0] }, files: ['content.js'] }); }
+    catch { return { blockedReason: 'content-unavailable' }; }
+    reason = await fastTabScope(run);
+    if (reason) return { blockedReason: reason };
+  }
+  // Check cancellation after every transport await, immediately before dispatch.
+  reason = fastRunStop(run);
+  if (reason) return { blockedReason: reason };
+  let timer;
+  try {
+    const response = await Promise.race([
+      chrome.tabs.sendMessage(run.tabId, { __hc: command, ...p }, { frameId: 0 }),
+      new Promise((resolve) => { timer = setTimeout(() => resolve({ timedOut: true }), Math.max(1, Math.min(10000, run.deadline - Date.now()))); }),
+    ]);
+    if (!response || response.error || response.timedOut || !response.data || typeof response.data !== 'object') {
+      if (command === 'fast_act') run.blockedReason = 'execution-unknown';
+      return { blockedReason: command === 'fast_act' ? 'execution-unknown' : 'content-unavailable' };
+    }
+    reason = await fastTabScope(run);
+    if (reason) return { blockedReason: reason };
+    const data = response.data;
+    if (FAST_STICKY_REASONS.has(data.blockedReason)) run.blockedReason = data.blockedReason;
+    return data;
+  } catch {
+    if (command === 'fast_act') run.blockedReason = 'execution-unknown';
+    return { blockedReason: command === 'fast_act' ? 'execution-unknown' : 'content-unavailable' };
+  } finally { clearTimeout(timer); }
+}
+
+async function fastObserve(p, tabId, command) {
+  const extra = command === 'fast_verify' ? ['assertions'] : [];
+  if (!fastRequestKeys(p, extra)) return { blockedReason: 'malformed-request', ...(command === 'fast_verify' ? { verified: false, checks: [] } : {}) };
+  const state = await fastGetRun(p, tabId, { initialize: command === 'fast_snapshot' });
+  if (state.reason) return { blockedReason: state.reason, tabId, ...(command === 'fast_verify' ? { verified: false, checks: [] } : {}) };
+  const data = await fastContent(state.run, command, p);
+  if (data.blockedReason) return { blockedReason: data.blockedReason, challenge: !!data.challenge, tabId,
+    ...(command === 'fast_verify' ? { verified: false, checks: [] } : {}) };
+  const reason = await fastTabScope(state.run);
+  if (reason) return { blockedReason: reason, tabId, ...(command === 'fast_verify' ? { verified: false, checks: [] } : {}) };
+  if (command === 'fast_verify') return { verified: data.verified === true, checks: Array.isArray(data.checks) ? data.checks.map((check) => ({ index: check.index, passed: check.passed === true })) : [], tabId };
+  if (command === 'fast_status') return { pageChanged: false, navigated: data.navigated === true, stale: data.stale === true, challenge: data.challenge === true, tabId };
+  state.run.lastUrl = (await chrome.tabs.get(tabId)).url;
+  if (fastRunStop(state.run)) return { blockedReason: fastRunStop(state.run), tabId };
+  return { snapshotId: data.snapshotId, url: data.url, title: data.title, visibleText: data.visibleText,
+    elements: data.elements, scroll: data.scroll, pageVersion: data.pageVersion, challenge: data.challenge === true, tabId };
+}
+
+async function fastPerform(p, tabId) {
+  const empty = { pageChanged: false, navigated: false, tabId };
+  if (!fastRequestKeys(p, ['operation', 'ref', 'snapshotId', 'optionId', 'text', 'expectedUrl'])) return { ...empty, blockedReason: 'malformed-request' };
+  const state = await fastGetRun(p, tabId);
+  if (state.reason) return { ...empty, blockedReason: state.reason };
+  const before = (await chrome.tabs.get(tabId)).url;
+  let reason = await fastTabScope(state.run);
+  if (reason) return { ...empty, blockedReason: reason };
+  const data = await fastContent(state.run, 'fast_act', p);
+  reason = await fastTabScope(state.run);
+  let navigated = data.navigated === true;
+  try { navigated ||= (await chrome.tabs.get(tabId)).url !== before; } catch { /* Report only a boolean. */ }
+  reason ||= fastRunStop(state.run);
+  return { pageChanged: data.pageChanged === true, navigated, challenge: data.challenge === true, tabId,
+    ...((reason || data.blockedReason) ? { blockedReason: reason || data.blockedReason } : {}) };
+}
+
+async function fastOpen(p, tabId) {
+  if (!fastRequestKeys(p, ['url']) || typeof p.url !== 'string' || p.url.length > 8000) return { blockedReason: 'malformed-request' };
+  let reason = fastConfiguration(p);
+  if (reason) return { blockedReason: reason };
+  if (!fastAllowedUrl(p.url, p.allowedDomains)) return { blockedReason: 'domain-out-of-scope' };
+  if (fastRuns.has(p.runId)) return { blockedReason: 'run-already-started' };
+  let tab;
+  try {
+    if (tabId !== undefined && tabId !== null) {
+      if (!Number.isSafeInteger(tabId) || tabId <= 0) return { blockedReason: 'tab-required' };
+      await chrome.tabs.get(tabId);
+      reason = fastConfiguration(p);
+      if (reason) return { blockedReason: reason };
+      tab = await chrome.tabs.update(tabId, { url: p.url });
+    } else {
+      reason = fastConfiguration(p);
+      if (reason) return { blockedReason: reason };
+      tab = await chrome.tabs.create({ url: p.url, active: true });
+      tabId = tab.id;
+    }
+  } catch { return { blockedReason: 'setup-failed' }; }
+  const state = await fastGetRun(p, tabId, { initialize: true, settingUp: true });
+  if (state.reason) return { blockedReason: state.reason, tabId };
+  const loadDeadline = Math.min(p.deadline, Date.now() + 10000);
+  while (Date.now() < loadDeadline) {
+    reason = await fastTabScope(state.run);
+    if (reason) return { blockedReason: reason, tabId };
+    tab = await chrome.tabs.get(tabId);
+    if (tab.status === 'complete') break;
+    await sleep(Math.min(25, Math.max(1, loadDeadline - Date.now())));
+  }
+  reason = await fastTabScope(state.run);
+  if (reason) return { blockedReason: reason, tabId };
+  await waitForReady(tabId, { hardCap: Math.min(5000, Math.max(1, p.deadline - Date.now())), quiet: 800 });
+  reason = await fastTabScope(state.run);
+  if (reason) return { blockedReason: reason, tabId };
+  state.run.settingUp = false;
+  reason = await fastTabScope(state.run);
+  if (reason) return { blockedReason: reason, tabId };
+  if (tab.status !== 'complete') return { blockedReason: 'setup-timeout', tabId };
+  return { tabId, url: fastPublicUrl(tab.url || p.url) };
+}
+
+async function fastAbortRun(p, tabId) {
+  if (!p || typeof p !== 'object' || Array.isArray(p) || Object.keys(p).some((key) => key !== 'runId') || !FAST_RUN_ID.test(p.runId || '')) return { blockedReason: 'malformed-request' };
+  fastCanceledRuns.add(p.runId);
+  const run = fastRuns.get(p.runId);
+  if (run) { run.canceled = true; run.blockedReason = 'aborted'; tabId = run.tabId; }
+  // Abort is permitted on a drifted page and never injects or reloads a script.
+  if (Number.isSafeInteger(tabId) && tabId > 0) {
+    try { await chrome.tabs.sendMessage(tabId, { __hc: 'fast_abort', runId: p.runId }, { frameId: 0 }); } catch { /* A departing document cannot resume. */ }
+  }
+  return { aborted: true, ...(Number.isSafeInteger(tabId) ? { tabId } : {}) };
+}
+
+chrome.tabs.onCreated.addListener((tab) => {
+  for (const run of fastTabWatches.values()) {
+    if (Date.now() >= run.deadline || run.canceled || tab.id === run.tabId) continue;
+    if (tab.openerTabId === run.tabId) run.blockedReason = 'new-tab-opened';
+  }
+});
+chrome.tabs.onUpdated.addListener((tabId, info) => {
+  const run = fastTabWatches.get(tabId);
+  if (!run || Date.now() >= run.deadline || run.canceled) return;
+  if (info.url && !fastAllowedUrl(info.url, run.allowedDomains) && !(run.settingUp && info.url === 'about:blank')) run.blockedReason = 'domain-out-of-scope';
+});
+
 const HANDLERS = {
+  async fast_open(p, tabId) { return fastOpen(p, tabId); },
+  async fast_snapshot(p, tabId) { return fastObserve(p, tabId, 'fast_snapshot'); },
+  async fast_act(p, tabId) { return fastPerform(p, tabId); },
+  async fast_verify(p, tabId) { return fastObserve(p, tabId, 'fast_verify'); },
+  async fast_status(p, tabId) { return fastObserve(p, tabId, 'fast_status'); },
+  async fast_abort(p, tabId) { return fastAbortRun(p, tabId); },
   async snapshot(p, tabId, ctx) {
     const id = await resolveTab(tabId);
     const drift = await driftNote(id, ctx?.sid);

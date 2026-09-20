@@ -286,7 +286,7 @@
     return keep;
   }
 
-  function buildSnapshot() {
+  function refreshSnapshotRefs() {
     
     //
     
@@ -338,6 +338,12 @@
       taken.add(row.ref);
     }
 
+    for (const { el, role, name, ref } of rows) refMap.set(ref, { el, role, name });
+    return { rows, truncated, keep };
+  }
+
+  function buildSnapshot() {
+    const { rows, truncated, keep } = refreshSnapshotRefs();
     const lines = [];
     let n = 0;
     for (const { el, role, name, ref, hint } of rows) {
@@ -2007,6 +2013,402 @@
   }
 
   
+  // Fast mode keeps raw DOM identities and sensitive context in this isolated world.
+  // Structured rows share the manual snapshot's DOM/ref collection, never its text.
+  const FAST_REF = /^e[1-9]\d{0,5}$/;
+  const FAST_RUN = /^[A-Za-z0-9_-]{8,80}$/;
+  const FAST_ACTIONS = new Set(['CLICK', 'TYPE_TEXT', 'SELECT', 'SCROLL_UP', 'SCROLL_DOWN']);
+  const FAST_PRIVATE = /password|passphrase|secret|token|api.?key|credential|authorization|bearer|card|cvv|cvc|iban|billing|payment|email|e-mail|phone|mobile|address|postal|zip.?code|full.?name|first.?name|last.?name|birth|passport|identity|social.?security|account.?number/i;
+  const FAST_CHALLENGE_TEXT = /verify (you|that you)|are you (a )?human|i'?m not a robot|checking your browser|just a moment|press (and|&) hold|complete the (security )?check/i;
+  const FAST_CHALLENGE_FRAME = /challenges\.cloudflare\.com|hcaptcha\.com|recaptcha|geetest|captcha|arkoselabs|funcaptcha|perimeterx|datadome/i;
+  let fastState = null;
+  let fastRevision = 0;
+  let fastObserver = null;
+  const fastCanceled = new Set();
+
+  function fastKeys(p, allowed) {
+    return p && typeof p === 'object' && !Array.isArray(p)
+      && Object.keys(p).every((key) => key === '__hc' || allowed.includes(key));
+  }
+
+  function fastScope(p) {
+    if (!FAST_RUN.test(p.runId || '') || !Number.isSafeInteger(p.deadline)
+      || !Array.isArray(p.allowedDomains) || !p.allowedDomains.length || p.allowedDomains.length > 32
+      || p.allowedDomains.some((host) => typeof host !== 'string' || !host || host !== host.toLowerCase()
+        || !/^[a-z0-9.-]+$/.test(host) || host.startsWith('.') || host.endsWith('.') || host.includes('..'))) {
+      return 'malformed-request';
+    }
+    if (fastCanceled.has(p.runId)) return 'aborted';
+    if (Date.now() >= p.deadline) return 'deadline-exceeded';
+    if (window.top !== window) return 'unsupported-frame';
+    try {
+      const url = new URL(location.href);
+      if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password
+        || !p.allowedDomains.includes(url.hostname)) return 'domain-out-of-scope';
+    } catch { return 'domain-out-of-scope'; }
+    return null;
+  }
+
+  function fastNormalize(value) {
+    return decodeURIComponentSafe(String(value || '')).normalize('NFKC').replace(/[\u200b-\u200f\u2060\ufeff\u00ad]/g, '');
+  }
+
+  function fastUnsupportedLabel(value) {
+    const label = fastNormalize(value);
+    return !/[\p{L}\p{N}]/u.test(label);
+  }
+
+  function fastUnsafeUrlText(url) {
+    const raw = `${url.pathname}${url.search}${url.hash}`;
+    let decoded = raw;
+    for (let i = 0; i < 3; i++) { try { const next = decodeURIComponent(decoded); if (next === decoded) break; decoded = next; } catch { return true; } }
+    return /%[0-9a-f]{2}/i.test(decoded) || /\p{L}/u.test(fastNormalize(decoded).replace(/[\x00-\x7f]/g, ''));
+  }
+
+  function fastSafeUrl(raw) {
+    try {
+      const url = new URL(raw, location.href);
+      if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) return '';
+      return `${url.origin}${url.pathname}`;
+    } catch { return ''; }
+  }
+
+  function fastVisible(el) {
+    if (!el || el.getRootNode() !== document || !isVisible(el)) return false;
+    const r = el.getBoundingClientRect();
+    if (r.bottom <= 0 || r.top >= innerHeight || r.right <= 0 || r.left >= innerWidth) return false;
+    for (let node = el; node; node = node.parentElement) {
+      if (node.hidden || node.inert || node.getAttribute('aria-hidden') === 'true') return false;
+      const s = getComputedStyle(node);
+      if (s.display === 'none' || s.visibility === 'hidden' || s.visibility === 'collapse' || Number(s.opacity) < 0.02) return false;
+    }
+    return true;
+  }
+
+  function fastName(el) {
+    const visibleText = (node) => node && fastVisible(node) ? (node.innerText || '') : '';
+    const byId = (ids) => String(ids || '').split(/\s+/).map((id) => visibleText(document.getElementById(id))).join(' ');
+    const label = el.id ? document.querySelector(`label[for="${CSS.escape(el.id)}"]`) : null;
+    const candidates = [el.getAttribute('aria-label'), byId(el.getAttribute('aria-labelledby')), visibleText(label),
+      visibleText(el.closest('label')), el.getAttribute('placeholder'), el.getAttribute('data-placeholder'),
+      el.getAttribute('aria-placeholder'), el.getAttribute('title'), el.getAttribute('alt'),
+      el.tagName === 'INPUT' && /^(submit|button|reset)$/.test(el.type || '') ? el.value : '',
+      el.tagName === 'SELECT' ? '' : visibleText(el), byId(el.getAttribute('aria-describedby')), el.getAttribute('name')];
+    for (const candidate of candidates) {
+      const value = String(candidate || '').replace(/\s+/g, ' ').trim();
+      if (value) return value.slice(0, 240);
+    }
+    return '';
+  }
+
+  function fastPrivateField(el) {
+    return isSecretField(el) || FAST_PRIVATE.test(fastNormalize([
+      el.type, el.name, el.id, el.getAttribute('autocomplete'), el.getAttribute('aria-label'),
+      el.getAttribute('placeholder'), fastName(el),
+    ].join(' ')));
+  }
+
+  function fastVisibleText(limit = 6000) {
+    const pieces = [];
+    let length = 0;
+    const walker = document.createTreeWalker(document.body || document.documentElement, NodeFilter.SHOW_TEXT);
+    let node;
+    while ((node = walker.nextNode()) && length < limit) {
+      const parent = node.parentElement;
+      if (!parent || !fastVisible(parent)) continue;
+      if (parent.closest('script,style,noscript,template,textarea,select,option,[contenteditable],svg')) continue;
+      let privateContext = false;
+      for (let el = parent; el && el !== document.body; el = el.parentElement) {
+        const hint = [el.id, el.className, el.getAttribute('autocomplete'), el.getAttribute('aria-label')].join(' ');
+        if (FAST_PRIVATE.test(hint)) { privateContext = true; break; }
+      }
+      if (privateContext) continue;
+      const value = String(node.nodeValue || '').replace(/\s+/g, ' ').trim();
+      if (!value) continue;
+      pieces.push(value.slice(0, limit - length));
+      length += value.length + 1;
+    }
+    return pieces.join(' ').slice(0, limit);
+  }
+
+  function fastRedact(value, privateValues = [], limit = 240) {
+    let text = String(value ?? '').slice(0, Math.max(limit * 3, 1000));
+    for (const secret of privateValues) if (secret.length >= 3) text = text.split(secret).join('[REDACTED]');
+    return text
+      .replace(/\b(?:Bearer\s+\S+|(?:sk|pk|ghp|github_pat|xox[baprs])[-_][A-Za-z0-9_-]+)\b/gi, '[REDACTED]')
+      .replace(/\b(?:password|secret|token|api[_ -]?key|authorization|card|cvv|email|phone|address|full[_ -]?name)\s*[:=]\s*[^\n,;]+/gi, '[REDACTED]')
+      .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[REDACTED]')
+      .replace(/https?:\/\/[^\s<>"']+/gi, (url) => fastSafeUrl(url) || '[REDACTED]')
+      .replace(/\b[A-Za-z0-9_-]{28,}\b/g, '[REDACTED]')
+      .replace(/(?:\+?\d[\d ().-]{7,}\d)/g, '[REDACTED]')
+      .replace(/\s+/g, ' ').trim().slice(0, limit);
+  }
+
+  function fastLinkInfo(el, p) {
+    const link = el.closest('a[href],area[href]');
+    if (!link) return { link: null, href: '', download: false, risk: null };
+    const download = link.hasAttribute('download');
+    let url;
+    try { url = new URL(link.getAttribute('href'), location.href); } catch { return { link, href: '', download, risk: 'unsafe-link' }; }
+    const target = (link.getAttribute('target') || document.querySelector('base[target]')?.getAttribute('target') || '').toLowerCase();
+    const unsafe = !['http:', 'https:'].includes(url.protocol) || url.username || url.password;
+    const risk = unsafe ? 'unsafe-link'
+      : target && target !== '_self' ? 'new-tab-link'
+      : !p.allowedDomains.includes(url.hostname) ? 'cross-domain-link'
+      : null;
+    return { link, href: unsafe ? '' : fastSafeUrl(url.href), download, risk };
+  }
+
+  function decodeURIComponentSafe(value) {
+    let result = value;
+    for (let i = 0; i < 3; i++) { try { const next = decodeURIComponent(result); if (next === result) break; result = next; } catch { break; } }
+    return result;
+  }
+
+  function fastFormRisk(el, p) {
+    const form = el.form || el.closest('form');
+    if (!form) return null;
+    let action;
+    try { action = new URL(form.getAttribute('action') || location.href, location.href); } catch { return 'unsafe-form'; }
+    if (!['http:', 'https:'].includes(action.protocol) || action.username || action.password
+      || !p.allowedDomains.includes(action.hostname)) return 'unsafe-form';
+    return null;
+  }
+
+  function fastRisk(el, p) {
+    const formRisk = fastFormRisk(el, p);
+    const link = fastLinkInfo(el, p);
+    if (link.risk) return { risk: link.risk, formRisk, link };
+    if (formRisk) return { risk: formRisk, formRisk, link };
+    if (fastUnsupportedLabel(fastName(el))) return { risk: 'unsupported-label', formRisk, link };
+    if (el.tagName === 'INPUT' && /^(file|hidden|image|reset)$/i.test(el.type || '')) return { risk: 'unsupported-input', formRisk, link };
+    if (el.tagName === 'BUTTON' && /^(reset)$/i.test(el.type || 'submit')) return { risk: 'unsupported-input', formRisk, link };
+    return { risk: null, formRisk, link };
+  }
+
+  function fastUnsafeOption(option) {
+    return option.disabled || option.parentElement?.disabled || fastUnsupportedLabel(option.text);
+  }
+
+  function fastOperations(el, risk) {
+    if (risk || isDisabled(el) || el.readOnly || el.getAttribute('aria-readonly') === 'true') return [];
+    if (el.tagName === 'SELECT') return el.multiple ? [] : ['SELECT'];
+    if (el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && /^(text|search|email|tel|url|password|number)$/i.test(el.type || 'text'))
+      || ((el.isContentEditable || el.closest(EDITOR_HOSTS)) && roleOf(el) === 'textbox')) return ['TYPE_TEXT'];
+    if (['A', 'BUTTON', 'SUMMARY'].includes(el.tagName) || (el.tagName === 'INPUT' && /^(checkbox|radio|button|submit)$/i.test(el.type || ''))
+      || ['button', 'link', 'checkbox', 'radio', 'switch', 'tab', 'menuitem', 'option'].includes(el.getAttribute('role'))) return ['CLICK'];
+    return [];
+  }
+
+  function fastSignature(el, p) {
+    const form = el.form || el.closest('form');
+    const risk = fastRisk(el, p);
+    return JSON.stringify({
+      role: roleOf(el), name: fastName(el), tag: el.tagName, type: el.type, value: el.value,
+      checked: el.checked, selected: el.selected, selectedIndex: el.selectedIndex, disabled: isDisabled(el), readOnly: el.readOnly,
+      visible: fastVisible(el), attrs: Array.from(el.attributes).map((a) => [a.name, a.value]),
+      form: form ? Array.from(form.attributes).map((a) => [a.name, a.value]) : null,
+      risk: risk.risk, formRisk: risk.formRisk,
+      options: el.tagName === 'SELECT' ? Array.from(el.options).map((opt) => [opt.value, opt.text, opt.disabled, opt.selected, !!opt.parentElement?.disabled]) : [],
+    });
+  }
+
+  function fastSyncRevision() {
+    if (!fastObserver) {
+      fastObserver = new MutationObserver((records) => { fastRevision += records.length; });
+      fastObserver.observe(document, { subtree: true, childList: true, characterData: true, attributes: true });
+    }
+    fastRevision += fastObserver.takeRecords().length;
+    return fastRevision;
+  }
+
+  function fastChallenge() {
+    const evidence = challengeEvidence();
+    return evidence.frames.some((src) => FAST_CHALLENGE_FRAME.test(src))
+      || evidence.overlays.some((value) => FAST_CHALLENGE_TEXT.test(value))
+      || FAST_CHALLENGE_TEXT.test(fastVisibleText(8000));
+  }
+
+  function fastSnapshot(p) {
+    if (!fastKeys(p, ['runId', 'allowedDomains', 'deadline'])) return { blockedReason: 'malformed-request' };
+    const blockedReason = fastScope(p);
+    if (blockedReason) return { blockedReason };
+    if (fastChallenge()) return { blockedReason: 'challenge', challenge: true };
+    const { rows } = refreshSnapshotRefs();
+    const visible = rows.filter(({ el }) => fastVisible(el)).slice(0, 160);
+    const privateValues = visible.filter(({ el }) => fastPrivateField(el)).map(({ el }) => String(el.value || '')).filter(Boolean);
+    const records = new Map();
+    const elements = visible.map(({ el, role, name, ref }) => {
+      const { risk, formRisk, link } = fastRisk(el, p);
+      const options = el.tagName === 'SELECT' ? Array.from(el.options).slice(0, 60) : [];
+      records.set(ref, { el, signature: fastSignature(el, p), form: el.form || el.closest('form'), options });
+      const rawValue = el.tagName === 'SELECT' ? (el.options[el.selectedIndex]?.text || '') : String(el.value || '');
+      return {
+        ref, role, name: fastRedact(fastName(el), privateValues), value: fastPrivateField(el) ? '[REDACTED]' : fastRedact(rawValue, privateValues, 160),
+        checked: !!(el.checked || el.getAttribute('aria-checked') === 'true'), selected: el.getAttribute('aria-selected') === 'true',
+        expanded: el.getAttribute('aria-expanded') === 'true', disabled: isDisabled(el), readOnly: !!(el.readOnly || el.getAttribute('aria-readonly') === 'true'),
+        tagName: el.tagName, inputType: String(el.type || '').toLowerCase(), visible: true, sensitive: !!risk, risk, formRisk,
+        download: link.download, ...(link.href ? { href: link.href } : {}),
+        options: options.map((opt, index) => ({ id: `${ref}:o${index}`, index, label: fastRedact(opt.text, privateValues),
+          disabled: !!fastUnsafeOption(opt), selected: !!opt.selected })),
+        operations: fastOperations(el, risk),
+      };
+    });
+    const scroll = { up: window.scrollY > 1, down: window.scrollY + innerHeight < Math.max(document.documentElement.scrollHeight, document.body?.scrollHeight || 0) - 1 };
+    fastState = { runId: p.runId, deadline: p.deadline, domains: JSON.stringify(p.allowedDomains), snapshotId, url: location.href,
+      records, candidates: collectCandidates().filter(({ el }) => fastVisible(el)).map(({ el }) => el), revision: fastSyncRevision(), scrollX: window.scrollX, scrollY: window.scrollY };
+    return { snapshotId, url: fastSafeUrl(location.href), title: fastRedact(document.title, privateValues),
+      visibleText: fastRedact(fastVisibleText(), privateValues, 6000), elements, scroll, pageVersion: String(fastState.revision), challenge: false };
+  }
+
+  function fastFresh(p) {
+    const scope = fastScope(p);
+    if (scope) return scope;
+    const state = fastState;
+    if (!state || state.runId !== p.runId || state.deadline !== p.deadline || state.domains !== JSON.stringify(p.allowedDomains)
+      || state.snapshotId !== p.snapshotId || snapshotId !== p.snapshotId || state.url !== location.href
+      || p.expectedUrl !== fastSafeUrl(location.href)
+      || state.scrollX !== window.scrollX || state.scrollY !== window.scrollY) return 'stale-snapshot';
+    // Dynamic applications routinely update unrelated controls and text. Recheck
+    // the selected target completely; other page churn cannot change its authority.
+    if (p.ref) {
+      const rec = state.records.get(p.ref);
+      if (!rec || refMap.get(p.ref)?.el !== rec.el || !rec.el.isConnected || !fastVisible(rec.el)
+        || rec.signature !== fastSignature(rec.el, p) || rec.form !== (rec.el.form || rec.el.closest('form'))
+        || rec.options.some((opt, index) => rec.el.options[index] !== opt)) return 'stale-snapshot';
+    }
+    if (fastChallenge()) return 'challenge';
+    return null;
+  }
+
+  function fastHit(el) {
+    const r = el.getBoundingClientRect();
+    const x = (Math.max(0, r.left) + Math.min(r.right, innerWidth)) / 2;
+    const y = (Math.max(0, r.top) + Math.min(r.bottom, innerHeight)) / 2;
+    const top = document.elementFromPoint(x, y);
+    return !!top && (top === el || el.contains(top));
+  }
+
+  async function fastAct(p) {
+    const empty = { pageChanged: false, navigated: false };
+    if (!fastKeys(p, ['runId', 'allowedDomains', 'deadline', 'operation', 'ref', 'snapshotId', 'optionId', 'text', 'expectedUrl'])
+      || !FAST_ACTIONS.has(p.operation) || !/^s[1-9]\d*$/.test(p.snapshotId || '') || typeof p.expectedUrl !== 'string') {
+      return { ...empty, blockedReason: 'malformed-request' };
+    }
+    const targetAction = ['CLICK', 'TYPE_TEXT', 'SELECT'].includes(p.operation);
+    if ((targetAction && !FAST_REF.test(p.ref || '')) || (!targetAction && p.ref !== undefined)
+      || (p.operation === 'TYPE_TEXT' ? typeof p.text !== 'string' || p.text.length > 4000 : p.text !== undefined)
+      || (p.operation === 'SELECT' ? typeof p.optionId !== 'string' || !new RegExp(`^${p.ref}:o(?:0|[1-9]\\d{0,2})$`).test(p.optionId) : p.optionId !== undefined)) {
+      return { ...empty, blockedReason: 'malformed-request' };
+    }
+    let reason = fastFresh(p);
+    if (reason) return { ...empty, blockedReason: reason, challenge: reason === 'challenge' };
+    let el = null;
+    let option = null;
+    if (targetAction) {
+      try { el = resolve({ ref: p.ref, snapshotId: p.snapshotId }); } catch { return { ...empty, blockedReason: 'stale-snapshot' }; }
+      const risk = fastRisk(el, p).risk;
+      if (risk || !fastOperations(el, risk).includes(p.operation)) return { ...empty, blockedReason: risk || 'incompatible-target' };
+      if (!fastHit(el)) return { ...empty, blockedReason: 'covered-target' };
+      if (p.operation === 'SELECT') {
+        const index = Number(p.optionId.split(':o')[1]);
+        option = fastState.records.get(p.ref)?.options[index];
+        if (!option || el.options[index] !== option || fastUnsafeOption(option)) return { ...empty, blockedReason: 'invalid-option' };
+      }
+    }
+    const before = location.href;
+    const beforeScroll = window.scrollY;
+    const baseline = await baselineOf(el);
+    // This await is the last point at which another message can abort the run.
+    // Recheck immediately before the first mutation, with no subsequent await.
+    reason = fastFresh(p);
+    if (reason) return { ...empty, blockedReason: reason, challenge: reason === 'challenge' };
+    if (el && (!fastHit(el) || fastRisk(el, p).risk || !fastOperations(el, null).includes(p.operation))) return { ...empty, blockedReason: 'stale-snapshot' };
+    fastState = null; // Consume before dispatch: an ambiguous receipt cannot replay it.
+    try {
+      if (p.operation === 'CLICK') {
+        if (typeof el.click === 'function') el.click(); else el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, composed: true }));
+      } else if (p.operation === 'TYPE_TEXT') {
+        if (el.isContentEditable || el.closest(EDITOR_HOSTS)) {
+          el.focus();
+          if (typeof DataTransfer === 'function' && typeof ClipboardEvent === 'function') {
+            const clipboard = new DataTransfer();
+            clipboard.setData('text/plain', p.text);
+            el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: clipboard, bubbles: true, cancelable: true }));
+          } else {
+            el.innerText = p.text;
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+          }
+        } else {
+          const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+          Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, p.text);
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+      } else if (p.operation === 'SELECT') {
+        el.selectedIndex = Array.from(el.options).indexOf(option);
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+      } else {
+        const amount = Math.min(640, Math.max(100, Math.floor(innerHeight * 0.75)));
+        window.scrollBy({ top: p.operation === 'SCROLL_DOWN' ? amount : -amount, behavior: 'instant' });
+      }
+    } catch { return { ...empty, blockedReason: 'execution-unknown' }; }
+    await sleep(Math.min(120, Math.max(0, p.deadline - Date.now())));
+    reason = fastScope(p);
+    if (reason) return { ...empty, navigated: before !== location.href, blockedReason: reason };
+    const effect = doEffect({ ref: p.ref, baseline });
+    const challenge = fastChallenge();
+    return { pageChanged: !!effect.changed || beforeScroll !== window.scrollY || before !== location.href,
+      navigated: before !== location.href, challenge,
+      ...(challenge ? { blockedReason: 'challenge' } : {}) };
+  }
+
+  function fastVerify(p) {
+    if (!fastKeys(p, ['runId', 'allowedDomains', 'deadline', 'assertions'])) return { verified: false, checks: [], blockedReason: 'malformed-request' };
+    const blockedReason = fastScope(p);
+    if (blockedReason) return { verified: false, checks: [], blockedReason };
+    if (fastChallenge()) return { verified: false, checks: [], blockedReason: 'challenge', challenge: true };
+    if (!Array.isArray(p.assertions) || !p.assertions.length || p.assertions.length > 32) return { verified: false, checks: [] };
+    const bounded = (value) => typeof value === 'string' && value.length > 0 && value.length <= 2000;
+    const checks = p.assertions.map((assertion, index) => {
+      let passed = false;
+      try {
+        if (!assertion || typeof assertion !== 'object' || Array.isArray(assertion)) return { index, passed };
+        const keys = Object.keys(assertion).sort().join(',');
+        if (keys === 'urlContains' && bounded(assertion.urlContains)) passed = location.href.includes(assertion.urlContains);
+        else if (keys === 'textContains' && bounded(assertion.textContains)) passed = fastVisibleText(20000).includes(assertion.textContains);
+        else if (keys === 'state' && assertion.state === 'ready') passed = document.readyState === 'complete';
+        else if (keys === 'selectorExists' && bounded(assertion.selectorExists)) passed = fastVisible(document.querySelector(assertion.selectorExists));
+        else if (keys === 'selector,value' && bounded(assertion.selector) && typeof assertion.value === 'string' && assertion.value.length <= 4000) {
+          const el = document.querySelector(assertion.selector);
+          passed = fastVisible(el) && !fastPrivateField(el) && typeof el.value === 'string' && el.value === assertion.value;
+        } else if (keys === 'checked,selector' && bounded(assertion.selector) && typeof assertion.checked === 'boolean') {
+          const el = document.querySelector(assertion.selector);
+          passed = fastVisible(el) && ((typeof el.checked === 'boolean' && el.checked === assertion.checked)
+            || (['true', 'false'].includes(el.getAttribute('aria-checked')) && (el.getAttribute('aria-checked') === 'true') === assertion.checked));
+        }
+      } catch { passed = false; }
+      return { index, passed: !!passed };
+    });
+    return { verified: checks.length > 0 && checks.every((check) => check.passed), checks };
+  }
+
+  function fastStatus(p) {
+    if (!fastKeys(p, ['runId', 'allowedDomains', 'deadline'])) return { blockedReason: 'malformed-request' };
+    const blockedReason = fastScope(p);
+    if (blockedReason) return { blockedReason };
+    const challenge = fastChallenge();
+    const stale = !!fastState && fastFresh({ ...p, snapshotId: fastState.snapshotId, expectedUrl: fastSafeUrl(fastState.url) }) === 'stale-snapshot';
+    return { pageChanged: false, navigated: !!fastState && fastState.url !== location.href, stale, challenge,
+      ...(challenge ? { blockedReason: 'challenge' } : {}) };
+  }
+
+  function fastAbort(p) {
+    if (!fastKeys(p, ['runId']) || !FAST_RUN.test(p.runId || '')) return { blockedReason: 'malformed-request' };
+    fastCanceled.add(p.runId);
+    if (fastState?.runId === p.runId) fastState = null;
+    return { aborted: true };
+  }
+
   function invalidate() {  }
   for (const m of ['pushState', 'replaceState']) {
     const orig = history[m];
@@ -2025,6 +2427,11 @@
         switch (msg.__hc) {
           case 'ping': return sendResponse({ pong: true });
           case 'snapshot': return sendResponse({ data: buildSnapshot() });
+          case 'fast_snapshot': return sendResponse({ data: fastSnapshot(msg) });
+          case 'fast_act': return sendResponse({ data: await fastAct(msg) });
+          case 'fast_verify': return sendResponse({ data: fastVerify(msg) });
+          case 'fast_status': return sendResponse({ data: fastStatus(msg) });
+          case 'fast_abort': return sendResponse({ data: fastAbort(msg) });
           case 'locate': return sendResponse({ data: await doLocate(msg) });
           
           
@@ -2076,6 +2483,7 @@
             return sendResponse({ error: { code: 'INTERNAL', message: 'Unknown command ' + msg.__hc } });
         }
       } catch (e) {
+        if (String(msg.__hc).startsWith('fast_')) return sendResponse({ error: { code: 'FAST_FAILED', message: 'Fast command failed; no automatic retry is permitted.' } });
         sendResponse({ error: { code: e.code || 'INTERNAL', message: e.message } });
       }
     })();
