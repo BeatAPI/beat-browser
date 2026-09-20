@@ -1,0 +1,15 @@
+node_modules/
+.DS_Store
+*.log
+.env
+.env.*
+.output/
+.wxt/
+assets-local/
+screenshots-local/
+*.local.md
+docs/_local/
+*.pem
+extension-key.pem
+.beat-browser-secrets/
+dist/

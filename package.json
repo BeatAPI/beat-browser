@@ -1,0 +1,52 @@
+{
+  "name": "@beatapi/beat-browser",
+  "version": "1.2.0",
+  "description": "BeatBrowser — MCP + Chrome extension for signed-in Chrome control (BeatAPI).",
+  "type": "module",
+  "bin": {
+    "beat-browser": "src/cli.js"
+  },
+  "files": [
+    "src",
+    "extension",
+    "docs",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "mcp": "node src/cli.js mcp",
+    "bridge": "node src/cli.js bridge --foreground",
+    "doctor": "node src/cli.js doctor",
+    "test": "node --test test/english-only.test.js",
+    "test:live": "node --test test/scenarios.test.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.22.0",
+    "ws": "^8.18.3"
+  },
+  "keywords": [
+    "beatbrowser",
+    "beat-browser",
+    "mcp",
+    "chrome",
+    "browser-automation",
+    "beatapi",
+    "x-reply",
+    "claude-code",
+    "codex",
+    "cursor",
+    "ai-agent"
+  ],
+  "license": "MIT",
+  "author": "BeatAPI",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/BeatAPI/beat-browser.git"
+  },
+  "homepage": "https://github.com/BeatAPI/beat-browser",
+  "bugs": {
+    "url": "https://github.com/BeatAPI/beat-browser/issues"
+  }
+}

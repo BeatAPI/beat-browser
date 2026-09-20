@@ -1,0 +1,60 @@
+<!doctype html>
+<meta charset="utf-8" />
+<style>
+  :root { color-scheme: light dark; }
+  body { width: 280px; margin: 0; padding: 16px; font: 13px/1.55 -apple-system, system-ui, sans-serif; }
+  h1 { margin: 0 0 2px; font-size: 14px; font-weight: 600; letter-spacing: .2px; }
+  .sub { color: #8a8f98; font-size: 11px; margin-bottom: 14px; }
+  .row { display: flex; align-items: center; gap: 8px; padding: 9px 11px; border-radius: 8px; background: color-mix(in srgb, currentColor 6%, transparent); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: #94a3b8; flex: none; }
+  .dot.on { background: #22c55e; }
+  .state { font-weight: 500; }
+  button { margin-top: 12px; width: 100%; padding: 8px; font: inherit; font-weight: 500; border: 0; border-radius: 8px; background: #2563eb; color: #fff; cursor: pointer; }
+  button:disabled { opacity: .45; cursor: default; }
+  button.ghost { background: color-mix(in srgb, currentColor 10%, transparent); color: inherit; }
+  button.ghost.on { background: #16a34a; color: #fff; }
+  .tip { margin-top: 12px; font-size: 11px; color: #8a8f98; }
+  code { font-size: 10.5px; background: color-mix(in srgb, currentColor 9%, transparent); padding: 1px 4px; border-radius: 4px; }
+  .sess { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+  .sess .s { display: flex; align-items: center; gap: 7px; font-size: 11.5px; line-height: 1.4; }
+  .sess .swatch { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+  .sess .who { font-weight: 600; flex: none; }
+  .sess .page { color: #8a8f98; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+</style>
+
+<h1>BeatBrowser <span id="ver" style="font-weight:400;color:#8a8f98;font-size:11px"></span></h1>
+<div class="sub">Let AI agents use your own Chrome</div>
+
+<div class="row">
+  <span class="dot" id="dot"></span>
+  <span class="state" id="state">Checking…</span>
+</div>
+<div class="tip" id="conntip" style="margin-top:6px"></div>
+
+<button id="btn">Reconnect</button>
+
+<div class="row" style="margin-top:10px">
+  <span class="dot" id="l2dot"></span>
+  <span class="state" id="l2state">High-fidelity mode</span>
+</div>
+<button id="l2btn" class="ghost">Enable</button>
+<div class="tip" id="l2tip">
+  On by default. Agents can dispatch trusted browser input events (sites that check
+  <code>isTrusted</code>, rich editors, background screenshots). Debugger attaches only for those seconds.
+</div>
+
+<div class="row" style="margin-top:10px">
+  <span class="dot" id="markdot"></span>
+  <span class="state" id="markstate">Control marks</span>
+</div>
+<button id="markbtn" class="ghost">Enable</button>
+<div class="sess" id="sess"></div>
+<div class="tip" id="marktip">
+  Agent-controlled pages get a colored border, breathing cursor, and cockpit badge —
+  so you always see which tab is driven and by whom.
+</div>
+
+<div class="tip" id="tip">If connection fails, run <code>beat-browser doctor</code>.
+  The extension is not gone — only the link to the terminal broke. Tap Reconnect; no need to reload from chrome://extensions.</div>
+
+<script src="popup.js"></script>

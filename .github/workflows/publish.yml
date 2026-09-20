@@ -1,0 +1,45 @@
+#
+#   git push --follow-tags
+#
+#
+
+name: publish
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write # OIDC ，
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false # 
+
+      - run: npm install -g npm@latest
+
+      - run: npm ci
+      - run: npm test
+
+      - id: published
+        run: |
+          PKG=$(node -p "require('./package.json').name")@$(node -p "require('./package.json').version")
+          if npm view "$PKG" version >/dev/null 2>&1; then
+            echo "$PKG already on npm — skip publish"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.published.outputs.skip != 'true'
+        run: npm publish

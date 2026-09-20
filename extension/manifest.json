@@ -1,0 +1,35 @@
+{
+  "manifest_version": 3,
+  "name": "BeatBrowser",
+  "version": "1.2.0",
+  "description": "Let any MCP-capable AI agent control your own Chrome, with all your signed-in sessions.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuf8PMVATnhA0dKQyhNKfsieBQJZF/Pi76V/fsN2npn7KpYPm1EpP1i3CyNcW8vhZdgih8gObTDidR0zAie8Ah5rgPQvSamkFmy6yUowJ3+2IDsKD7iSjoxoNSpmGZSpIzRfx6LGfRC0ISyAZC7NoZsy7BqWT+lIVeXJZvCe8sM052hxbGx8od1e99tZJ8X9fomq0Ry3xb8tvhXqi1PHs6LrLEEWMN0VENvBnwLW2ZogJcjZ7G9amn3UYiNaYQaDix0aWfirND+nI5uQnqfxp4YeYcLOc1NBf57i4tJAWgxpTQ4Z82JbTgnw+iHo5CI7zrOiS2GFC6l4u0u1Uud+mywIDAQAB",
+  "minimum_chrome_version": "116",
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "BeatBrowser"
+  },
+  "permissions": [
+    "tabs",
+    "tabGroups",
+    "scripting",
+    "storage",
+    "alarms",
+    "offscreen",
+    "downloads",
+    "notifications",
+    "debugger"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
