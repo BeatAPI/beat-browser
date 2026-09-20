@@ -64,22 +64,20 @@ Learn a site once in **Normal**, save notes, then run the path in **Fast JEV**.
 
 ## How it compares
 
-✅ yes · ⚠️ partial / setup-dependent · ❌ no. Directional against public docs — not a sponsorship claim or speed ranking.
+Same shape as the common browser-control matrix: checkmark plus a short note
+when it helps. ✅ yes · ⚠️ partial / setup-dependent · ❌ no. Directional against
+public docs — not a sponsorship claim or speed ranking.
 
-<div align="center">
-
-| | BeatBrowser | [jev-ultrafast](https://github.com/browser-use/jev-ultrafast) | Claude in Chrome | ChatGPT / Codex | Playwright MCP | chrome-devtools-mcp | Browser Use |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| Daily Chrome + real login | ✅ | ⚠️ | ✅ | ✅ | ⚠️ | ⚠️ | ⚠️ |
-| Any MCP agent | ✅ | ❌ | ❌ | ❌ | ✅ | ✅ | ⚠️ |
-| No debug port / launch flags | ✅ | ❌ | ✅ | ✅ | ⚠️ | ❌ | ❌ |
-| Explicit Normal explore tools | ✅ | ⚠️ | ⚠️ | ⚠️ | ✅ | ✅ | ✅ |
-| Optional Fast JEV typed loop | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ⚠️ |
-| Dual mode, one signed-in browser | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ⚠️ |
-| Compounding site learnings | ✅ | ⚠️ | ❌ | ⚠️ | ❌ | ❌ | ⚠️ |
-| Human handoff (captcha / pay / judgment) | ✅ | ⚠️ | ✅ | ⚠️ | ❌ | ❌ | ⚠️ |
-
-</div>
+| | **BeatBrowser** | [jev-ultrafast](https://github.com/browser-use/jev-ultrafast) | Claude in Chrome | ChatGPT / Codex | Playwright MCP | chrome-devtools-mcp | Browser Use |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Daily Chrome + real login | ✅ Extension on the profile you already use | ⚠️ Harness / CDP; profile varies | ✅ | ✅ | ⚠️ Extension / attach mode | ⚠️ Remote debugging / DevTools attach | ⚠️ Harness or remote Chromium |
+| Any MCP agent | ✅ MCP is the primary interface | ❌ Python harness, not MCP-first | ❌ Anthropic clients only | ❌ OpenAI product surface | ✅ | ✅ | ⚠️ Library; MCP not the default |
+| No debug port / launch flags | ✅ Load unpacked extension | ❌ CDP / harness launch | ✅ | ✅ | ⚠️ Extension mode can avoid it | ❌ Needs DevTools / remote debugging | ❌ Chromium or remote debugging |
+| Explicit Normal explore tools | ✅ 23 MCP browser tools | ⚠️ JEV-centric loop | ⚠️ Inside Claude only | ⚠️ Inside ChatGPT / Codex | ✅ Playwright APIs over MCP | ✅ Low-level CDP / DevTools | ✅ Agent tools in Python runtime |
+| Optional Fast JEV typed loop | ✅ Finite ops + targets; local validate / act / verify | ✅ Core product loop | ❌ | ❌ | ❌ | ❌ | ⚠️ Custom loops possible; not BeatAPI Fast JEV |
+| Dual mode, one signed-in browser | ✅ Normal **and** Fast JEV share cookies / sessions | ❌ JEV-focused | ❌ Single product loop | ❌ Single product loop | ❌ Playwright session model | ❌ DevTools session model | ⚠️ One runtime; no Normal+Fast split |
+| Compounding site learnings | ✅ Bundled notes + local `~/.beat-browser/learnings` | ⚠️ Project-specific | ❌ Product memory only | ⚠️ Product memory | ❌ | ❌ | ⚠️ Exists; often off by default |
+| Human handoff (captcha / pay / judgment) | ✅ Handoff tool + stop-on-uncertain Fast path | ⚠️ Depends on harness wiring | ✅ Pauses for you | ⚠️ Sensitive-action confirms | ❌ | ❌ | ⚠️ Stronger in hosted / cloud setups |
 
 **In short:** Claude in Chrome and ChatGPT/Codex win inside their own products. Playwright MCP and chrome-devtools-mcp win for scripts, CI, and protocol work. [jev-ultrafast](https://github.com/browser-use/jev-ultrafast) is the typed-decision reference in the Browser Use stack. BeatBrowser is for when **your** agent needs **your** signed-in Chrome — with Normal tools and optional Fast JEV on the same profile.
 
