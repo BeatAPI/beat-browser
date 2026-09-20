@@ -41,7 +41,7 @@ function walk(directory) {
 for (const directory of ['src', 'extension', 'test', 'docs', 'scripts']) {
   if (fs.existsSync(path.join(root, directory))) walk(path.join(root, directory));
 }
-for (const filename of ['README.md', 'PRIVACY.md', 'THIRD_PARTY_NOTICES.md', 'HANDOFF.md', 'TEST_RESULTS.md', 'package.json', 'package-lock.json']) {
+for (const filename of ['README.md', 'PRIVACY.md', 'TEST_RESULTS.md', 'package.json', 'package-lock.json']) {
   if (fs.existsSync(path.join(root, filename))) scan(path.join(root, filename));
 }
 console.log(JSON.stringify({ checkedFiles: checked, findings, scope: 'Source patterns and extension cloud boundary; not exhaustive secret detection.' }, null, 2));

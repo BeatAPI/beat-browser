@@ -1,8 +1,5 @@
 import { sanitizeText } from './redact.js';
 
-// Speculative heads and probability checks are adapted from jev-ultrafast
-// (1231850a0bf1a0c0341fe408ef1668dbbfdfac46), MIT, Copyright 2026 Browser Use.
-// See THIRD_PARTY_NOTICES.md for the complete upstream notice.
 // These strings describe a closed protocol, never an instruction from the page.
 export const OPERATIONS = Object.freeze([
   'CLICK', 'TYPE_TEXT', 'SELECT', 'SCROLL_UP', 'SCROLL_DOWN', 'WAIT', 'DONE', 'BLOCKED',

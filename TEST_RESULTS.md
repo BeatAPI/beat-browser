@@ -153,7 +153,6 @@ continuation. Missing usage remains `null`, not an invented zero-token claim.
 These fixtures deliberately include rejection and unverified-completion cases.
 Expected-outcome matching is a control-flow check, not a real task-success rate.
 Local millisecond measurements do not compare model speed or cost. The upstream
-7.1-second flight example is not used as a BeatBrowser benchmark result.
 
 ## Checks intentionally not executed
 
@@ -207,7 +206,7 @@ ZIP and copied reports described in the historical section below predate these
 live fixes and must be regenerated before handoff or PR creation.
 
 Reproduction commands, source provenance, all changed files, deviations and
-human-only PR instructions are in `HANDOFF.md`. The PR text is a local draft
+The PR text was a local draft
 in `docs/JEV_FAST_AGENT_PR.md`.
 
 ## Original delivery artifact verification before the live benchmark
