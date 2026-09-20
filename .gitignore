@@ -13,6 +13,8 @@ docs/_local/
 extension-key.pem
 .beat-browser-secrets/
 dist/
+.readme-refiner/
 
 # Local ops notes — keep on disk, do not publish
-docs/learnings/
+docs/learnings/*
+!docs/learnings/x.com.md

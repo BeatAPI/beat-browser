@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import WebSocket from 'ws';
 import { readBridgeInfo, DEFAULT_PORT, HOME, AUDIT_FILE, LOG_FILE } from './lib/paths.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -15,10 +16,19 @@ const flag = (k, d) => { const i = argv.indexOf(k); return i >= 0 ? (argv[i + 1]
 const has = (k) => argv.includes(k);
 
 switch (cmd) {
+  case 'run': {
+    const { runCli } = await import('./fast-agent/cli.js');
+    process.exitCode = await runCli(argv.slice(1));
+    break;
+  }
+
   case 'mcp': {
     const { startMcpServer } = await import('./mcp-server.js');
     
-    await startMcpServer({ client: flag('--client', 'unknown') });
+    await startMcpServer({
+      client: flag('--client', 'unknown'),
+      fastAgentEnabled: has('--enable-fast-agent') || process.env.BEAT_BROWSER_FAST_AGENT === '1',
+    });
     break;
   }
 
@@ -122,12 +132,17 @@ switch (cmd) {
 
   beat-browser install        install: configure every detected agent, then guide the extension setup
   beat-browser mcp            start the MCP server (agent configs point here; install writes it for you)
+  beat-browser run --dry-run --url URL --goal TEXT  validate an optional fast task locally
+  beat-browser run --enable-fast-agent --url URL --goal TEXT  opt into the bounded BeatAPI executor
   beat-browser doctor [--json] diagnose connection problems (machine-readable with --json)
   beat-browser extension      print the extension loading steps
   beat-browser audit [-n 30]  show recent browser operations
   beat-browser audit --stats [--days 7]   usage stats: turns, busiest commands, where time is wasted
   beat-browser bridge --foreground        run the bridge in the foreground (debugging)
   beat-browser install --dry-run          show which configs would change, write nothing
+
+Fast tasks are off by default. See docs/JEV_FAST_AGENT.md for consent, scope,
+assertions, exact field inputs, limits, traces and optional MCP task setup.
 
 Config directory: ${HOME}`);
 }

@@ -41,5 +41,7 @@ test('bundled learnings load and their act playbooks lint clean', () => {
   const md = fs.readFileSync(path.join(ROOT, 'docs', 'learnings', 'x.com.md'), 'utf8');
   assert.deepEqual(lintPlaybooks(md), []);
   assert.match(getLearnings('x.com'), /Reply publish recipe/);
+  assert.match(getLearnings('x.com'), /Fast JEV operating notes/);
+  assert.match(getLearnings('x.com'), /Never automatically retry a reply\/post click/);
   assert.match(getLearnings('twitter.com'), /Reply publish recipe/);
 });

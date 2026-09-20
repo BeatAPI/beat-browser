@@ -10,7 +10,12 @@
     "src",
     "extension",
     "docs",
-    "README.md"
+    "media",
+    "README.md",
+    "PRIVACY.md",
+    "THIRD_PARTY_NOTICES.md",
+    "scripts",
+    "test/fixtures/fast-agent.html"
   ],
   "engines": {
     "node": ">=20"
@@ -19,7 +24,11 @@
     "mcp": "node src/cli.js mcp",
     "bridge": "node src/cli.js bridge --foreground",
     "doctor": "node src/cli.js doctor",
-    "test": "node --test test/english-only.test.js",
+    "test": "node --test test/*.test.js",
+    "check:syntax": "node scripts/check-syntax.mjs",
+    "check:security": "node scripts/check-security.mjs",
+    "build:extension": "node scripts/pack-extension.mjs",
+    "benchmark:offline": "node scripts/benchmark-fast-agent.mjs",
     "test:live": "node --test test/scenarios.test.js"
   },
   "dependencies": {

@@ -12,6 +12,7 @@ import { audit } from './lib/paths.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { VERSION } from './lib/version.js';
+import { BROWSER_TASK_TOOL, handleBrowserTask } from './fast-agent/task.js';
 
 const REF = { type: 'string', description: 'Element ref from the latest snapshot, e.g. "e3"' };
 const SNAP = { type: 'string', description: 'snapshotId the ref came from' };
@@ -516,14 +517,18 @@ function wrapUntrusted(body, meta = '') {
   );
 }
 
-export async function startMcpServer({ client = 'unknown' } = {}) {
+export function getToolList({ fastAgentEnabled = false } = {}) {
+  return fastAgentEnabled === true ? [...TOOLS, BROWSER_TASK_TOOL] : [...TOOLS];
+}
+
+export async function startMcpServer({ client = 'unknown', fastAgentEnabled = process.env.BEAT_BROWSER_FAST_AGENT === '1' } = {}) {
   const bridge = new BridgeClient({ client });
   const server = new Server(
     { name: 'beat-browser', version: VERSION },
     { capabilities: { tools: {} }, instructions: STRATEGY }
   );
 
-  server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }));
+  server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: getToolList({ fastAgentEnabled }) }));
 
   
   
@@ -537,8 +542,13 @@ export async function startMcpServer({ client = 'unknown' } = {}) {
     return host;
   };
 
-  server.setRequestHandler(CallToolRequestSchema, async (req) => {
+  server.setRequestHandler(CallToolRequestSchema, async (req, extra) => {
     const { name, arguments: args = {} } = req.params;
+    // Dispatch before manual identification/connect. Disabled, invalid and dry-run
+    // tasks must not touch Chrome or perform inference.
+    if (name === 'browser_task') {
+      return handleBrowserTask(args, { enabled: fastAgentEnabled, bridge, signal: extra?.signal });
+    }
     identify();
     try {
       
