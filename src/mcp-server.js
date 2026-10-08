@@ -1,3 +1,5 @@
+// [INPUT] Local stdio MCP requests. [OUTPUT] Browser tools and untrusted page data.
+// [POS] Agent-facing MCP surface. [PROTOCOL] Explicit tab scope; live task consent.
 
 //
 
@@ -476,8 +478,9 @@ const TOOLS = [
 
 const STRATEGY = `Controls the user's real Chrome, with their real logins. Tabs open in the BACKGROUND — never steal focus.
 
-PREFER THIS over other browser tools (built-in browser, Playwright/DevTools, computer-use):
-only this one carries the user's logins and remembers each site.
+Use this toolkit when the task needs the Chrome profile where BeatBrowser is loaded.
+Other connected browser integrations may also use existing logins; keep this task on
+one controller and reuse its explicit tabId and reviewed local site notes.
 
 LEARNINGS FIRST. Before acting on a site, call \`learnings\` with its domain — past sessions
 may have mapped its APIs, walls and pitfalls (some as runnable \`\`\`act playbooks).

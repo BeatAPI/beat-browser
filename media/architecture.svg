@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1080" viewBox="0 0 1600 1080" role="img" aria-labelledby="title desc">
+<title id="title">Your Chrome. Your choice of agent.</title>
+<desc id="desc">Claude Code, Codex CLI and Cursor connect through a local stdio MCP server and loopback bridge to a Chrome extension in an existing profile. Claude's native Chrome integration and Codex's Chrome extension also use existing profiles; Codex's built-in browser has a separate profile.</desc>
+<defs>
+  <pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r="1" fill="#dce2ed"/></pattern>
+  <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 1L8 5L0 9" fill="none" stroke="#2463eb" stroke-width="1.7"/></marker>
+</defs>
+<rect width="1600" height="1080" fill="#f5f6fa"/>
+<rect x="800" y="0" width="800" height="650" fill="url(#grid)"/>
+<g font-family="Arial, Helvetica, sans-serif">
+  <rect x="78" y="52" width="42" height="42" rx="12" fill="#2463eb"/>
+  <text x="91" y="83" font-size="33" font-weight="700" fill="#fff">b</text>
+  <text x="137" y="84" font-size="29" font-weight="700" fill="#172337">BeatBrowser</text>
+  <text x="1520" y="82" text-anchor="end" font-size="18" letter-spacing="2" fill="#62738d">OPEN SOURCE · LOCAL MCP</text>
+  <text x="78" y="180" font-size="68" font-weight="700" letter-spacing="-3" fill="#172337">Your Chrome.</text>
+  <text x="533" y="180" font-size="68" font-weight="700" letter-spacing="-3" fill="#2463eb">Your choice of agent.</text>
+  <text x="81" y="231" font-size="26" fill="#60718b">One browser toolkit across MCP clients. Keep the profile you already use.</text>
+
+  <rect x="70" y="282" width="1460" height="410" rx="26" fill="#fff" stroke="#dce3ef" stroke-width="2"/>
+  <text x="102" y="330" font-size="16" font-weight="700" letter-spacing="2" fill="#697a93">01 / YOUR AGENT</text>
+  <text x="436" y="330" font-size="16" font-weight="700" letter-spacing="2" fill="#697a93">02 / BEATBROWSER</text>
+  <text x="1042" y="330" font-size="16" font-weight="700" letter-spacing="2" fill="#697a93">03 / YOUR BROWSER</text>
+
+  <g fill="#f4f6fb" stroke="#dce3ef" stroke-width="1.5">
+    <rect x="101" y="366" width="246" height="68" rx="12"/>
+    <rect x="101" y="450" width="246" height="68" rx="12"/>
+    <rect x="101" y="534" width="246" height="68" rx="12"/>
+  </g>
+  <g font-size="25" font-weight="700" fill="#27364d">
+    <text x="123" y="409">Claude Code</text><text x="123" y="493">Codex CLI</text><text x="123" y="577">Cursor + others</text>
+  </g>
+  <text x="103" y="650" font-size="19" fill="#687b94">Local stdio MCP clients</text>
+  <path d="M348 400H377V484H423M348 484H423M348 568H377V484" fill="none" stroke="#2463eb" stroke-width="3"/>
+  <path d="M390 484H423" stroke="#2463eb" stroke-width="3" marker-end="url(#arrow)"/>
+
+  <rect x="436" y="366" width="490" height="236" rx="16" fill="#edf3ff" stroke="#c6d8fc" stroke-width="1.5"/>
+  <text x="465" y="412" font-size="28" font-weight="700" fill="#174fb6">MCP server</text>
+  <text x="465" y="450" font-size="22" fill="#4d6a97">23 tools · DOM refs · batched actions</text>
+  <line x1="465" y1="476" x2="897" y2="476" stroke="#ceddf5" stroke-width="2"/>
+  <text x="465" y="518" font-size="28" font-weight="700" fill="#174fb6">Local bridge</text>
+  <text x="465" y="557" font-size="22" fill="#4d6a97">127.0.0.1 · agent token · command audit</text>
+  <text x="438" y="650" font-size="19" fill="#687b94">Observe → act → check effects → hand back</text>
+  <path d="M929 484H1017" stroke="#2463eb" stroke-width="3" marker-end="url(#arrow)"/>
+
+  <rect x="1042" y="366" width="455" height="236" rx="16" fill="#f6f9fc" stroke="#d9e2ec" stroke-width="1.5"/>
+  <rect x="1042" y="366" width="455" height="49" rx="16" fill="#e7edf6"/>
+  <rect x="1042" y="392" width="455" height="23" fill="#e7edf6"/>
+  <circle cx="1065" cy="391" r="5" fill="#97a9c1"/><circle cx="1083" cy="391" r="5" fill="#97a9c1"/><circle cx="1101" cy="391" r="5" fill="#97a9c1"/>
+  <text x="1270" y="397" text-anchor="middle" font-size="18" fill="#57708e">Chrome + BeatBrowser extension</text>
+  <text x="1072" y="466" font-size="30" font-weight="700" fill="#172337">Your existing profile</text>
+  <text x="1072" y="507" font-size="23" fill="#63748d">Same tabs. Same signed-in sessions.</text>
+  <rect x="1072" y="536" width="155" height="35" rx="17" fill="#e2f3e9"/>
+  <text x="1149" y="560" text-anchor="middle" font-size="17" fill="#227251">Human handoff</text>
+  <text x="1044" y="650" font-size="19" fill="#687b94">No separate hosted browser required</text>
+
+  <text x="80" y="759" font-size="26" font-weight="700" fill="#172337">Native browsers can reuse logins too.</text>
+  <text x="80" y="797" font-size="22" fill="#60718b">The difference is the integration you choose, not exclusive access to your sessions.</text>
+  <g fill="#fff" stroke="#dce3ef" stroke-width="1.5">
+    <rect x="78" y="829" width="469" height="141" rx="16"/>
+    <rect x="566" y="829" width="469" height="141" rx="16"/>
+    <rect x="1054" y="829" width="469" height="141" rx="16"/>
+  </g>
+  <g font-size="23" font-weight="700" fill="#27364d">
+    <text x="103" y="873">Claude Code + Claude in Chrome</text>
+    <text x="591" y="873">Codex desktop · Browser</text>
+    <text x="1079" y="873">Codex desktop · Chrome</text>
+  </g>
+  <g font-size="21" fill="#60718b">
+    <text x="103" y="912">Existing signed-in browser profile</text><text x="103" y="943">Native Claude integration</text>
+    <text x="591" y="912">Separate app browser profile</text><text x="591" y="943">Preview, annotations and actions</text>
+    <text x="1079" y="912">Existing regular browser profile</text><text x="1079" y="943">Native OpenAI desktop integration</text>
+  </g>
+  <text x="80" y="1020" font-size="20" fill="#63748d">Normal: no BeatBrowser key. Optional Fast JEV: typed decisions via BeatAPI, with explicit opt-in.</text>
+  <text x="1522" y="1055" text-anchor="end" font-size="15" fill="#8592a8">Official comparison sources: docs/COMPARISON.md · 2026-10-08</text>
+</g>
+</svg>

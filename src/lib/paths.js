@@ -1,3 +1,6 @@
+// [INPUT] Local runtime files and token values.
+// [OUTPUT] Private bridge metadata and constant-time token comparison.
+// [POS] Shared filesystem boundary. [PROTOCOL] Never print credential values.
 
 import fs from 'node:fs';
 import os from 'node:os';
@@ -38,8 +41,10 @@ export function newToken() {
 }
 
 export function tokenEquals(a, b) {
-  if (typeof a !== 'string' || typeof b !== 'string' || a.length !== b.length) return false;
-  return crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  const actual = Buffer.from(a);
+  const expected = Buffer.from(b);
+  return actual.length === expected.length && crypto.timingSafeEqual(actual, expected);
 }
 
 export function audit(entry) {

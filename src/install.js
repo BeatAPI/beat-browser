@@ -1,3 +1,6 @@
+// [INPUT] Existing local MCP configs and a stable installation path.
+// [OUTPUT] Backed-up client configuration and extension setup instructions.
+// [POS] CLI installer. [PROTOCOL] Dry-run never writes; retain other integrations.
 
 //
 
@@ -88,7 +91,6 @@ function looksLikeMcp(f) {
   }
 }
 
-const FROM_NPM = ROOT.includes(`${path.sep}node_modules${path.sep}`);
 const REPO = 'https://github.com/BeatAPI/beat-browser';
 
 function nodeBin() {
@@ -102,7 +104,7 @@ function nodeBin() {
 }
 
 function launcher(client) {
-  if (FROM_NPM) return { command: WIN ? 'npx.cmd' : 'npx', args: ['-y', '@beatapi/beat-browser', 'mcp', '--client', client] };
+  // Keep MCP on the same installation as Chrome's unpacked extension.
   return { command: nodeBin(), args: [path.join(ROOT, 'src', 'cli.js'), 'mcp', '--client', client] };
 }
 
@@ -202,7 +204,6 @@ function writeJson(t) {
       command: [launch.command, ...launch.args],
       enabled: true,
     };
-    delete cfg.mcp['huashu-chrome'];
   } else {
     cfg.mcpServers = cfg.mcpServers || {};
     cfg.mcpServers['beat-browser'] = launcher(t.client);

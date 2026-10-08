@@ -1,3 +1,6 @@
+// [INPUT] Loopback WebSocket peers and local scope settings.
+// [OUTPUT] Scoped command dispatch and socket-owned responses.
+// [POS] Shared Chrome bridge. [PROTOCOL] Trusted local machine; no remote binding.
 
 //
 
@@ -126,6 +129,9 @@ export function startBridge({ port = DEFAULT_PORT, token = newToken(), writeInfo
       } catch {
         return send(ws, { type: 'res', ok: false, error: { code: 'INTERNAL', message: 'Invalid JSON' } });
       }
+      if (!msg || typeof msg !== 'object' || Array.isArray(msg) || typeof msg.type !== 'string') {
+        return ws.close(4000, 'invalid message');
+      }
       lastActivity = Date.now();
       ws.lastRx = lastActivity;
 
@@ -187,8 +193,9 @@ export function startBridge({ port = DEFAULT_PORT, token = newToken(), writeInfo
         if (!liveExtensions().length) broadcast({ type: 'event', event: 'extension_offline' });
       }
     });
+    // A malformed peer must not terminate the shared browser bridge.
+    ws.on('error', () => ws.terminate());
 
-    ws.on('error', () => {});
   });
 
   function handleHello(ws, msg) {
@@ -385,7 +392,7 @@ export function startBridge({ port = DEFAULT_PORT, token = newToken(), writeInfo
         for (const [k, v] of pending) if (v.id === msg.id) { key = k; p = v; break; }
       }
       if (!p) return; 
-      if (String(p.cmd).startsWith('fast_') && p.ext !== ws) return;
+      if (p.ext !== ws) return;
       clearTimeout(p.timer);
       clearTimeout(p.orphanTimer);   
       pending.delete(key);
@@ -420,7 +427,7 @@ export function startBridge({ port = DEFAULT_PORT, token = newToken(), writeInfo
       return null;
     }
     const ok = (list.sites || []).some((s) => host === s || host.endsWith('.' + s));
-    return ok ? null : { code: 'SITE_NOT_ALLOWED', message: `${host} is not in the authorized site list. Authorize it in the extension popup.` };
+    return ok ? null : { code: 'SITE_NOT_ALLOWED', message: `${host} is not in the authorized site list. Add it to "sites" in ~/.beat-browser/allowlist.json.` };
   }
 
   function send(ws, obj) {
