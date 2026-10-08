@@ -1,7 +1,7 @@
 {
   "name": "@beatapi/beat-browser",
   "version": "1.2.0",
-  "description": "BeatBrowser \u2014 MCP + Chrome extension for signed-in Chrome control (BeatAPI).",
+  "description": "BeatBrowser — a local MCP toolkit for your signed-in Chrome. Use it across compatible agents.",
   "type": "module",
   "bin": {
     "beat-browser": "src/cli.js"
@@ -9,12 +9,25 @@
   "files": [
     "src",
     "extension",
-    "docs",
-    "media",
+    "media/architecture.png",
+    "media/architecture.svg",
+    "skills",
+    "AGENT_INSTALL.md",
     "README.md",
     "PRIVACY.md",
+    "TEST_RESULTS.md",
+    "docs/JEV_FAST_AGENT.md",
+    "docs/JEV_BENCHMARK.md",
+    "docs/JEV_BENCHMARK_RESULTS.json",
+    "docs/learnings/x.com.md",
+    "docs/COMPARISON.md",
+    "docs/DEMO.md",
+    "docs/RELEASING.md",
     "scripts",
-    "test/fixtures/fast-agent.html"
+    "test/fixtures/fast-agent.html",
+    "test/fixtures/demo.html",
+    "docs/playbooks/x-reply.md",
+    "docs/playbooks/x-reply-team-pack.md"
   ],
   "engines": {
     "node": ">=20"
@@ -27,20 +40,22 @@
     "check:syntax": "node scripts/check-syntax.mjs",
     "check:security": "node scripts/check-security.mjs",
     "build:extension": "node scripts/pack-extension.mjs",
-    "benchmark:offline": "node scripts/benchmark-fast-agent.mjs"
+    "benchmark:offline": "node scripts/benchmark-fast-agent.mjs",
+    "check:package": "node scripts/check-package.mjs"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.22.0",
+    "@modelcontextprotocol/sdk": "^1.32.1",
     "ws": "^8.18.3"
   },
   "keywords": [
     "beatbrowser",
     "beat-browser",
     "mcp",
+    "mcp-server",
+    "chrome-extension",
     "chrome",
     "browser-automation",
     "beatapi",
-    "x-reply",
     "claude-code",
     "codex",
     "cursor",
@@ -55,5 +70,9 @@
   "homepage": "https://github.com/BeatAPI/beat-browser",
   "bugs": {
     "url": "https://github.com/BeatAPI/beat-browser/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
   }
 }

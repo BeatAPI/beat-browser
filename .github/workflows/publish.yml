@@ -30,6 +30,10 @@ jobs:
 
       - run: npm ci
       - run: npm test
+      - run: npm run check:syntax
+      - run: npm run check:security
+      - run: npm run check:package
+      - run: npm run build:extension
 
       - id: published
         run: |
@@ -42,4 +46,4 @@ jobs:
           fi
 
       - if: steps.published.outputs.skip != 'true'
-        run: npm publish
+        run: npm publish --access public

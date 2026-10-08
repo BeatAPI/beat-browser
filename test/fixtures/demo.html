@@ -1,0 +1,88 @@
+<!doctype html>
+<!-- [INPUT] Synthetic tickets and local draft fields. [OUTPUT] Visible persisted draft.
+     [POS] Browser-demo rehearsal. [PROTOCOL] No external requests or customer data. -->
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BeatBrowser demo workspace</title>
+<style>
+  * { box-sizing: border-box; }
+  :root { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #172337; background: #f4f6fa; }
+  body { margin: 0; }
+  header { display: flex; align-items: center; gap: 14px; padding: 22px 5%; background: #fff; border-bottom: 1px solid #dde3ed; }
+  .brand { font-size: 22px; font-weight: 750; letter-spacing: -.6px; }
+  .tag { font-size: 12px; color: #526680; padding: 6px 10px; border: 1px solid #dce3ed; border-radius: 20px; }
+  .local { margin-left: auto; color: #217252; font-size: 13px; }
+  main { max-width: 1320px; padding: 40px 32px; margin: auto; }
+  h1 { font-size: 38px; letter-spacing: -1.3px; margin: 0 0 12px; }
+  .intro { color: #61728b; margin-bottom: 30px; line-height: 1.6; }
+  .grid { display: grid; grid-template-columns: 1.05fr 1fr; gap: 24px; }
+  .card { background: white; border: 1px solid #dfe5ef; border-radius: 16px; padding: 26px; }
+  h2 { font-size: 18px; margin: 0 0 24px; }
+  .ticket { padding: 18px 0; border-top: 1px solid #edf0f5; }
+  .ticket:first-of-type { border: 0; padding-top: 0; }
+  .id { color: #2463eb; font-size: 12px; font-weight: 700; letter-spacing: .5px; }
+  h3 { font-size: 17px; margin: 8px 0; }
+  .ticket p { margin: 0; font-size: 14px; line-height: 1.65; color: #60718b; }
+  label { display: block; font-size: 13px; font-weight: 650; margin: 18px 0 8px; }
+  input, textarea, select { width: 100%; font: inherit; padding: 12px; border: 1px solid #cfd8e7; border-radius: 8px; background: #fff; }
+  textarea { height: 150px; resize: vertical; font-size: 14px; line-height: 1.6; }
+  input:focus, textarea:focus, select:focus { outline: 3px solid #2463eb22; border-color: #2463eb; }
+  .preview { margin-top: 24px; padding: 20px; border-radius: 10px; background: #f4f7fd; border: 1px solid #e1e8f4; }
+  .preview h3 { margin: 8px 0; }
+  .preview p { white-space: pre-wrap; font-size: 14px; line-height: 1.6; }
+  .eyebrow { font-size: 11px; color: #60718b; font-weight: 750; letter-spacing: 1.4px; }
+  .actions { display: flex; gap: 12px; align-items: center; margin-top: 20px; }
+  button { font: inherit; font-size: 13px; font-weight: 650; border-radius: 8px; padding: 12px 16px; border: 1px solid #d9e1ec; cursor: pointer; background: white; }
+  #publish { background: #2463eb; color: white; border-color: #2463eb; }
+  #status { color: #217252; font-size: 12px; }
+  footer { margin-top: 28px; font-size: 12px; color: #78869c; }
+  @media (max-width: 850px) { .grid { grid-template-columns: 1fr; } .tag { display: none; } main { padding: 24px 18px; } }
+</style>
+<header><span class="brand">BeatBrowser</span><span class="tag">DEMO WORKSPACE</span><span class="local">Local fixture · synthetic data</span></header>
+<main>
+  <h1>Turn three tickets into a clear draft.</h1>
+  <p class="intro">A repeatable browser task. Read the records, prepare a note, then let another agent review the same tab.</p>
+  <div class="grid">
+    <section class="card" aria-label="Synthetic support tickets">
+      <h2>Support inbox <span class="tag">3 tickets</span></h2>
+      <article class="ticket"><span class="id">BB-101</span><h3>Extension disconnected after sleep</h3><p>The browser bridge was offline after the laptop woke up. Reconnecting from the extension toolbar restored the connection.</p></article>
+      <article class="ticket"><span class="id">BB-102</span><h3>Draft lost its paragraph breaks</h3><p>A rich-text editor collapsed blank lines during entry. Compare the resulting draft layout with the intended text before sending.</p></article>
+      <article class="ticket"><span class="id">BB-103</span><h3>Wrong tab selected in a second agent</h3><p>A second client used an implicit active tab. Give each work line a label and pass its explicit tabId on every action.</p></article>
+    </section>
+    <section class="card" aria-label="Draft note">
+      <h2>Draft a triage note</h2>
+      <label for="title">Draft title</label><input id="title" autocomplete="off" placeholder="A short, useful title">
+      <label for="summary">Draft summary</label><textarea id="summary" placeholder="One line per ticket: ID, issue, next step"></textarea>
+      <label for="team">Team</label><select id="team"><option>Choose a team</option><option>Engineering review</option><option>Product review</option></select>
+      <section class="preview" aria-label="Draft preview"><span class="eyebrow">DRAFT PREVIEW</span><h3 id="preview-title">Untitled draft</h3><p id="preview-summary">No summary yet.</p><span id="preview-team" class="tag">Choose a team</span></section>
+      <div class="actions"><button id="publish" type="button">Publish note</button><button id="reset" type="button">Reset draft</button><output id="status" aria-live="polite">Draft ready</output></div>
+    </section>
+  </div>
+  <footer>This is a local rehearsal fixture, not a connected SaaS account. No messages, tickets or notes are sent to any service.</footer>
+</main>
+<script>
+  const storageKey = 'beatbrowser-demo-draft';
+  const fields = ['title', 'summary', 'team'].map(id => document.getElementById(id));
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem(storageKey) || '{}'); } catch { /* A fresh draft is safe. */ }
+  for (const field of fields) if (typeof saved?.[field.id] === 'string') field.value = saved[field.id];
+  function update(persist = true) {
+    const draft = Object.fromEntries(fields.map(field => [field.id, field.value]));
+    document.getElementById('preview-title').textContent = draft.title || 'Untitled draft';
+    document.getElementById('preview-summary').textContent = draft.summary || 'No summary yet.';
+    document.getElementById('preview-team').textContent = draft.team || 'Choose a team';
+    if (persist) {
+      try { localStorage.setItem(storageKey, JSON.stringify(draft)); document.getElementById('status').textContent = 'Draft saved locally'; }
+      catch { document.getElementById('status').textContent = 'Draft visible; local storage unavailable'; }
+    }
+  }
+  for (const field of fields) {
+    field.addEventListener('input', () => update());
+    field.addEventListener('change', () => update());
+  }
+  document.getElementById('publish').addEventListener('click', () => { document.getElementById('status').textContent = 'Fixture-only action; nothing sent'; });
+  document.getElementById('reset').addEventListener('click', () => { fields[0].value = ''; fields[1].value = ''; fields[2].selectedIndex = 0; update(); });
+  update(false);
+</script>
+</html>
